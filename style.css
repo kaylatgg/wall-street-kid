@@ -1,0 +1,603 @@
+/* ===== Wall Street Kid — retro NES-style theme ===== */
+
+:root {
+  --nes-black:      #0d0d1a;
+  --nes-navy:        #10105c;
+  --nes-navy-alt:    rgba(255, 255, 255, 0.04); /* zebra striping overlay */
+  --nes-blue:        #1c1cb8;
+
+  /* structural / chrome — every panel, box, input, and default button border */
+  --nes-border:      #55627f;
+  --nes-border-soft: rgba(85, 98, 127, 0.35); /* hover / selection state */
+
+  /* semantic colors — each used for exactly one meaning, nowhere else */
+  --nes-gold:        #ffd23f; /* title, section label tags, and the primary Advance Day action */
+  --nes-gold-dark:   #b8890a;
+  --nes-gold-bright: #fff2b8; /* highlight outline for Advance Day + YOU, against the gold-dark fill */
+  --nes-green:       #00e756; /* positive / money values only */
+  --nes-green-dark:  #00893d;
+  --nes-red:         #ff3355; /* negative values + Sell button only */
+  --nes-red-dark:    #7a0d24;
+
+  /* neutral text */
+  --nes-white:       #f5f5f5;
+  --nes-gray:        #9797b3;
+
+  --font-display: "Press Start 2P", "Courier New", monospace; /* title + section label tags only */
+  --font-body:    "VT323", "Courier New", monospace;          /* everything else */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--nes-black);
+  color: var(--nes-white);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.4;
+  overflow: hidden; /* fixed game screen — the page itself never scrolls */
+}
+
+.hidden {
+  display: none !important;
+}
+
+.crt-frame {
+  max-width: 1100px;
+  height: 100vh;
+  margin: 0 auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---------- CRT atmosphere overlay ---------- */
+/* Fixed, pointer-events:none, painted above everything — purely decorative,
+   never part of layout, never blocks interaction. */
+
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.12) 0px,
+      rgba(0, 0, 0, 0.12) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+/* ---------- Title bar ---------- */
+
+.title-bar {
+  flex: 0 0 auto;
+  text-align: center;
+  border: 4px solid var(--nes-border);
+  background: var(--nes-navy);
+  padding: 6px 8px;
+  box-shadow: 0 0 0 4px var(--nes-black), 6px 6px 0 var(--nes-black);
+}
+
+.title-bar h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--nes-gold);
+  text-shadow: 3px 3px 0 var(--nes-black);
+  letter-spacing: 2px;
+}
+
+.title-bar .subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: var(--nes-gray);
+  text-transform: uppercase;
+}
+
+/* ---------- Generic panel ---------- */
+
+.panel {
+  position: relative;
+  border: 4px solid var(--nes-border);
+  background: var(--nes-navy);
+  padding: 16px 10px 8px;
+  box-shadow: 0 0 0 4px var(--nes-black), 6px 6px 0 var(--nes-black);
+}
+
+.panel-title {
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  background: var(--nes-gold);
+  color: var(--nes-black);
+  font-family: var(--font-display);
+  padding: 3px 8px;
+  font-size: 10px;
+  border: 3px solid var(--nes-black);
+}
+
+/* ---------- Dashboard ---------- */
+
+.dashboard {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.stat-box {
+  /* stat boxes form their own group, distinct from content panels: green border
+     marks "always-on player readout," neutral border marks a content panel */
+  border: 3px solid var(--nes-green);
+  background: var(--nes-black);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 4px 4px 0 var(--nes-black), 0 0 0 1px var(--nes-black);
+}
+
+.stat-label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--nes-gray);
+  text-transform: uppercase;
+}
+
+.stat-value {
+  font-size: 19px;
+  color: var(--nes-white);
+}
+
+.stat-value-money {
+  color: var(--nes-green);
+}
+
+.stat-box-checkpoint .stat-value {
+  font-size: 15px;
+}
+
+/* value flash states, used later once trading/price logic is wired up */
+.stat-value.flash-up   { color: var(--nes-green); }
+.stat-value.flash-down { color: var(--nes-red); }
+
+/* ---------- News ticker ---------- */
+
+.news-ticker {
+  /* sized to its own content only — no fixed/min height, so it never eats
+     more of the fixed viewport than the single headline line actually needs */
+  flex: 0 0 auto;
+}
+
+.news-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.broker-avatar {
+  flex-shrink: 0;
+  line-height: 0;
+  border: 2px solid var(--nes-border);
+  background: var(--nes-black);
+  padding: 3px;
+}
+
+.news-content p {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+  color: var(--nes-white);
+  text-transform: uppercase;
+}
+
+/* ---------- Main grid ---------- */
+
+.main-grid {
+  flex: 1 1 auto;
+  min-height: 0; /* allow the grid to shrink to the remaining space instead of overflowing it */
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.main-grid .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* same shrink fix for the grid items themselves */
+}
+
+/* the scroll safety-net lives on an inner wrapper, never on .panel itself —
+   .panel-title is positioned with a negative top offset to straddle the
+   border, and overflow on an ancestor of it would clip that offset off */
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto; /* safety net only — tightened sizing means 8 rows fit without it */
+}
+
+/* Background motifs — fill the empty space below the table / around the
+   broker form with a low-contrast retro texture instead of leaving it blank.
+   Both are plain CSS backgrounds painted behind the panel's real children, so
+   later content (more rows, a price-history chart) simply layers on top
+   unaffected. */
+
+.stock-panel .panel-body {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='60' viewBox='0 0 160 60'><g fill='%2355627f' fill-opacity='0.10'><rect x='0' y='30' width='14' height='30'/><rect x='16' y='18' width='10' height='42'/><rect x='28' y='36' width='16' height='24'/><rect x='46' y='10' width='12' height='50'/><rect x='60' y='26' width='14' height='34'/><rect x='76' y='40' width='18' height='20'/><rect x='96' y='16' width='10' height='44'/><rect x='108' y='32' width='14' height='28'/><rect x='124' y='22' width='12' height='38'/><rect x='138' y='38' width='20' height='22'/></g></svg>");
+  background-repeat: repeat-x;
+  background-position: left bottom;
+  background-size: 160px 60px;
+}
+
+/* a faint ledger grid, tiled across the whole panel-body rather than anchored
+   to one edge — the actual empty space here is the flexible auto-margin gap
+   between the trade form and the Advance Day row, whose exact position/size
+   shifts with content, so a full-coverage tile is what reliably shows through
+   it (an edge-anchored motif risked landing behind the Advance Day row instead) */
+.trade-panel .panel-body {
+  background-image:
+    repeating-linear-gradient(to right, rgba(85, 98, 127, 0.14) 0px, rgba(85, 98, 127, 0.14) 1px, transparent 1px, transparent 20px),
+    repeating-linear-gradient(to bottom, rgba(85, 98, 127, 0.14) 0px, rgba(85, 98, 127, 0.14) 1px, transparent 1px, transparent 20px);
+}
+
+/* ---------- Stock table ---------- */
+
+.stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.stock-table th {
+  text-align: left;
+  color: var(--nes-gray);
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 4px;
+  border-bottom: 2px solid var(--nes-border);
+  white-space: nowrap;
+}
+
+.stock-table th:nth-child(4) {
+  text-align: center;
+}
+
+.stock-table td {
+  padding: 3px 4px;
+  color: var(--nes-white);
+}
+
+.stock-table tbody tr:nth-child(even) {
+  background: var(--nes-navy-alt);
+}
+
+.stock-table tbody tr:hover {
+  background: var(--nes-border-soft);
+}
+
+/* mirrors the Broker panel's dropdown selection — visually ties the two
+   panels together instead of them reading as unrelated tables */
+.stock-table tbody tr.selected {
+  background: rgba(255, 210, 63, 0.1);
+}
+
+.stock-table tbody tr.selected td:first-child {
+  box-shadow: inset 4px 0 0 var(--nes-gold);
+}
+
+.stock-ticker {
+  color: var(--nes-white);
+  letter-spacing: 1px;
+}
+
+.stock-company {
+  color: var(--nes-gray);
+}
+
+.stock-price {
+  color: var(--nes-green);
+}
+
+.stock-price.flash-up,
+.stock-change.flash-up {
+  color: var(--nes-green);
+  animation: flashUp 0.6s ease-out;
+}
+
+.stock-price.flash-down,
+.stock-change.flash-down {
+  color: var(--nes-red);
+  animation: flashDown 0.6s ease-out;
+}
+
+@keyframes flashUp {
+  0%   { background: var(--nes-green-dark); }
+  100% { background: transparent; }
+}
+
+@keyframes flashDown {
+  0%   { background: #6b0016; }
+  100% { background: transparent; }
+}
+
+.stock-change {
+  font-size: 15px;
+  text-align: center;
+}
+
+.stock-change.positive { color: var(--nes-green); }
+.stock-change.negative { color: var(--nes-red); }
+.stock-change.neutral  { color: var(--nes-gray); }
+
+/* ---------- Trade panel ---------- */
+
+.trade-form {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.trade-form label {
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--nes-gray);
+  text-transform: uppercase;
+  margin-top: 8px;
+}
+
+.trade-form select,
+.trade-form input {
+  font-family: var(--font-body);
+  font-size: 17px;
+  padding: 6px 8px;
+  background: var(--nes-black);
+  color: var(--nes-white);
+  border: 3px solid var(--nes-border);
+}
+
+/* custom dropdown arrow — a blocky, stair-stepped pixel chevron instead of the
+   browser default, drawn once as an SVG data URI so no image asset is needed */
+.trade-form select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4' shape-rendering='crispEdges'><rect x='0' y='0' width='7' height='1' fill='%23f5f5f5'/><rect x='1' y='1' width='5' height='1' fill='%23f5f5f5'/><rect x='2' y='2' width='3' height='1' fill='%23f5f5f5'/><rect x='3' y='3' width='1' height='1' fill='%23f5f5f5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 11px 6px;
+}
+
+/* custom shares stepper — replaces the native number spinner (unstyleable
+   consistently across browsers) with pixel-bordered +/- buttons */
+.stepper {
+  display: flex;
+  align-items: stretch;
+}
+
+.stepper input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  border-left: none;
+  border-right: none;
+  -moz-appearance: textfield;
+}
+
+.stepper input[type="number"]::-webkit-outer-spin-button,
+.stepper input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.stepper-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  font-family: var(--font-body);
+  font-size: 20px;
+  line-height: 1;
+  background: var(--nes-black);
+  color: var(--nes-white);
+  border: 3px solid var(--nes-border);
+  cursor: pointer;
+}
+
+.stepper-btn:active {
+  background: var(--nes-border-soft);
+}
+
+.trade-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.trade-feedback {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--nes-gray);
+  min-height: 20px;
+}
+
+.advance-day-wrap {
+  /* was margin-top: auto (pushed this row to the bottom, leaving the space
+     above it blank) — flex: 1 instead grows the row itself to consume all
+     remaining height in the panel, so the divider moves up flush against the
+     trade form and the button/avatar fill the space down to it */
+  flex: 1;
+  padding-top: 12px;
+  border-top: 2px solid var(--nes-border);
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  font-family: var(--font-body);
+  font-size: 17px;
+  letter-spacing: 1px;
+  padding: 10px;
+  background: var(--nes-blue);
+  color: var(--nes-white);
+  border: 3px solid var(--nes-border);
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--nes-black);
+  flex: 1;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn:active {
+  box-shadow: 1px 1px 0 var(--nes-black);
+  transform: translate(3px, 3px);
+}
+
+/* solid fill + brighter outline + a matching outer glow — one consistent
+   "layered" treatment shared by every action button (and, via .avatar-tag
+   below, the YOU tag) rather than Advance Day looking flat next to Buy/Sell */
+.btn-buy,
+.btn-sell,
+.btn-advance {
+  box-shadow: 4px 4px 0 var(--nes-black), 0 0 8px 1px var(--btn-glow);
+}
+
+.btn-buy {
+  --btn-glow: rgba(0, 231, 86, 0.45);
+  background: var(--nes-green-dark);
+  border-color: var(--nes-green);
+}
+
+.btn-sell {
+  --btn-glow: rgba(255, 51, 85, 0.45);
+  background: var(--nes-red-dark);
+  border-color: var(--nes-red);
+}
+
+.btn-advance {
+  /* flex: 1 inherited from .btn — fills the row alongside the avatar box,
+     staying visually dominant since the avatar box only takes its own width */
+  --btn-glow: rgba(255, 210, 63, 0.45);
+  font-size: 19px;
+  padding: 14px 10px;
+  background: var(--nes-gold-dark);
+  border-color: var(--nes-gold-bright);
+  color: var(--nes-black);
+}
+
+/* ---------- Player avatar ---------- */
+/* Sits in normal flow beside the Advance Day button — no absolute/fixed
+   positioning, so it can't overlap the button or add scroll. Gold border (vs.
+   the neutral border every other panel/box uses) plus a "YOU" tag in the same
+   style as the panel-title tags mark it as higher-tier than the NPC advisor
+   portrait in Market News; slightly heavier padding/border than that portrait's
+   frame gives it more visual presence without a size mismatch in the row. */
+
+.player-avatar-box {
+  /* fixed width share of the row (the panel column is only ~330px wide, so a
+     square box tall enough to match the fully-grown button would overflow it
+     sideways) — height instead comes from align-items: stretch on the row, so
+     the box still grows tall together with the button and bottom/top-aligns
+     with it exactly. The character art inside is centered and drawn bigger
+     than before, but at a fixed pixel scale so it isn't stretched/distorted
+     to fill the taller frame — the frame's own gold border reads as a
+     deliberate "character card" rather than as leftover empty space. */
+  position: relative;
+  flex: 0 0 150px;
+  width: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--nes-gold);
+  background: var(--nes-black);
+  padding: 6px;
+  box-shadow: 4px 4px 0 var(--nes-black);
+}
+
+.avatar-tag {
+  left: 50%;
+  transform: translateX(-50%);
+  /* .panel-title's border is plain black — swap in the same two-tone
+     fill/outline treatment as Advance Day (gold fill, brighter gold outline)
+     plus the matching glow, so the two read as one system */
+  border-color: var(--nes-gold-bright);
+  box-shadow: 0 0 8px 1px rgba(255, 210, 63, 0.5);
+}
+
+.player-avatar {
+  line-height: 0;
+}
+
+/* ---------- Overlay (milestones / win / game-over) ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.overlay-box {
+  border: 4px solid var(--nes-border);
+  background: var(--nes-navy);
+  padding: 32px 28px;
+  text-align: center;
+  max-width: 420px;
+  box-shadow: 0 0 0 4px var(--nes-black), 8px 8px 0 var(--nes-black);
+}
+
+.overlay-box h2 {
+  font-family: var(--font-display);
+  color: var(--nes-white);
+  font-size: 16px;
+  margin: 0 0 16px;
+  text-shadow: 2px 2px 0 var(--nes-black);
+}
+
+.overlay-box p {
+  font-size: 18px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.overlay-box .btn {
+  width: 100%;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 800px) {
+  .dashboard {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  .stock-table {
+    display: block;
+    overflow-x: auto;
+  }
+}

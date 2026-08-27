@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wall Street Kid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="crt-frame">
+
+  <header class="title-bar">
+    <h1>WALL STREET KID</h1>
+    <p class="subtitle">— A Fortune Awaits —</p>
+  </header>
+
+  <section class="dashboard">
+    <div class="stat-box">
+      <span class="stat-label">DAY</span>
+      <span class="stat-value" id="stat-day">1 / 30</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-label">CASH</span>
+      <span class="stat-value stat-value-money" id="stat-cash">$500,000</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-label">NET WORTH</span>
+      <span class="stat-value stat-value-money" id="stat-networth">$500,000</span>
+    </div>
+    <div class="stat-box stat-box-checkpoint">
+      <span class="stat-label">NEXT CHECKPOINT</span>
+      <span class="stat-value" id="stat-checkpoint">DAY 15 — $600,000</span>
+    </div>
+  </section>
+
+  <section class="news-ticker panel">
+    <span class="panel-title">MARKET NEWS</span>
+    <div class="news-content">
+      <div class="broker-avatar" id="broker-avatar"></div>
+      <p id="news-headline">Analysts predict a steady trading day ahead.</p>
+    </div>
+  </section>
+
+  <main class="main-grid">
+
+    <section class="panel stock-panel">
+      <span class="panel-title">STOCK EXCHANGE</span>
+      <div class="panel-body">
+        <table class="stock-table">
+          <thead>
+            <tr>
+              <th>TICKER</th>
+              <th>COMPANY</th>
+              <th>PRICE</th>
+              <th>CHANGE</th>
+              <th>SHARES OWNED</th>
+            </tr>
+          </thead>
+          <tbody id="stock-table-body">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel trade-panel">
+      <span class="panel-title">BROKER</span>
+
+      <div class="panel-body">
+        <div class="trade-form">
+          <label for="trade-stock-select">STOCK</label>
+          <select id="trade-stock-select"></select>
+
+          <label for="trade-shares-input">SHARES</label>
+          <div class="stepper">
+            <button type="button" class="stepper-btn" id="shares-decrement" aria-label="Decrease shares">&minus;</button>
+            <input type="number" id="trade-shares-input" min="1" value="1">
+            <button type="button" class="stepper-btn" id="shares-increment" aria-label="Increase shares">+</button>
+          </div>
+
+          <div class="trade-buttons">
+            <button id="buy-btn" class="btn btn-buy">BUY</button>
+            <button id="sell-btn" class="btn btn-sell">SELL</button>
+          </div>
+
+          <p class="trade-feedback" id="trade-feedback">&nbsp;</p>
+        </div>
+
+        <div class="advance-day-wrap">
+          <button id="advance-day-btn" class="btn btn-advance">ADVANCE DAY ▶</button>
+
+          <div class="player-avatar-box">
+            <span class="panel-title avatar-tag">YOU</span>
+            <div class="player-avatar" id="player-avatar"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+</div>
+
+<!-- Purely decorative retro-CRT scanline/vignette layer — fixed, pointer-events:none -->
+<div class="crt-overlay" aria-hidden="true"></div>
+
+<!-- Milestone / game-over / win overlays (hidden for now, wired up in step 5) -->
+<div id="overlay" class="overlay hidden">
+  <div class="overlay-box">
+    <h2 id="overlay-title">CHECKPOINT</h2>
+    <p id="overlay-message"></p>
+    <button id="overlay-btn" class="btn">CONTINUE</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
