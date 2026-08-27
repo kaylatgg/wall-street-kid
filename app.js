@@ -7,48 +7,72 @@ const player = {
   cash: STARTING_CASH,
   day: 1,
   holdings: {}, // { stockId: shares }
+  costBasis: {}, // { stockId: average price paid per share } — for Profit Taker
 };
 
 const stocks = [
-  { id: "byte",  name: "ByteWorks Computing", price: 42.50,  volatility: 0.04, history: [42.50], lastChangePercent: null },
-  { id: "grn",   name: "Greenfield Foods",    price: 18.25,  volatility: 0.02, history: [18.25], lastChangePercent: null },
-  { id: "orb",   name: "Orbital Dynamics",    price: 96.00,  volatility: 0.07, history: [96.00], lastChangePercent: null },
-  { id: "sud",   name: "Sudsy Cola Co.",      price: 12.75,  volatility: 0.015, history: [12.75], lastChangePercent: null },
-  { id: "iron",  name: "Ironclad Motors",     price: 61.10,  volatility: 0.03, history: [61.10], lastChangePercent: null },
-  { id: "pix",   name: "Pixelmax Studios",    price: 27.90,  volatility: 0.06, history: [27.90], lastChangePercent: null },
-  { id: "gld",   name: "Golden Bridge Bank",  price: 108.40, volatility: 0.025, history: [108.40], lastChangePercent: null },
-  { id: "wnd",   name: "Windrunner Airlines", price: 34.60,  volatility: 0.05, history: [34.60], lastChangePercent: null },
+  { id: "byte",  name: "ByteWorks Computing", sector: "TECHNOLOGY",
+    description: "A computer hardware maker building components for home and office desktops.",
+    price: 42.50,  volatility: 0.04, history: [42.50], lastChangePercent: null },
+  { id: "grn",   name: "Greenfield Foods",    sector: "FOOD",
+    description: "A packaged foods company producing canned and frozen grocery staples.",
+    price: 18.25,  volatility: 0.02, history: [18.25], lastChangePercent: null },
+  { id: "orb",   name: "Orbital Dynamics",    sector: "AEROSPACE",
+    description: "A spaceflight contractor building rockets and satellites for commercial launch.",
+    price: 96.00,  volatility: 0.07, history: [96.00], lastChangePercent: null },
+  { id: "sud",   name: "Sudsy Cola Co.",      sector: "BEVERAGES",
+    description: "A soft drink and soda bottler known for bubbly, sugary colas.",
+    price: 12.75,  volatility: 0.015, history: [12.75], lastChangePercent: null },
+  { id: "iron",  name: "Ironclad Motors",     sector: "AUTOMOTIVE",
+    description: "A car manufacturer building trucks and sedans for the family market.",
+    price: 61.10,  volatility: 0.03, history: [61.10], lastChangePercent: null },
+  { id: "pix",   name: "Pixelmax Studios",    sector: "GAMING",
+    description: "A video game studio developing console and PC titles.",
+    price: 27.90,  volatility: 0.06, history: [27.90], lastChangePercent: null },
+  { id: "gld",   name: "Golden Bridge Bank",  sector: "BANKING",
+    description: "A regional bank offering savings accounts, loans, and mortgages.",
+    price: 108.40, volatility: 0.025, history: [108.40], lastChangePercent: null },
+  { id: "wnd",   name: "Windrunner Airlines", sector: "AVIATION",
+    description: "A commercial airline operating passenger routes across the country.",
+    price: 34.60,  volatility: 0.05, history: [34.60], lastChangePercent: null },
 ];
 
 const milestones = [
-  { day: 15, requiredNetWorth: 600_000, label: "Halfway review" },
-  { day: 30, requiredNetWorth: 800_000, label: "Final inheritance claim" },
+  { day: 15, requiredNetWorth: 600_000, label: "Halfway Hustle" },
+  { day: 30, requiredNetWorth: 800_000, label: "Grand Payday" },
 ];
 
 const config = { maxDays: 30 };
 
 // ---------- news / tips ----------
-// Each headline names one stock and a price effect (a signed percentage)
-// applied to that stock on top of its normal drift+volatility on the NEXT
-// Advance Day. Mix of good and bad news across most stocks, so a headline
-// can mean "buy this" or "sell/avoid this," not just always-good news.
+// Each sector-tagged headline carries a price effect (a signed percentage)
+// applied to every stock in that sector on top of its normal drift+volatility
+// on the NEXT Advance Day. Mix of good and bad news across most sectors, so a
+// headline can mean "buy this" or "sell/avoid this," not just always-good news.
+// A handful of general headlines (sector: null) aren't tied to one sector —
+// they nudge every stock at once, with a smaller effect than a targeted one.
 const NEWS_HEADLINES = [
-  { stockId: "byte", text: "Analysts upgrade ByteWorks Computing on strong earnings.", effect: 0.08 },
-  { stockId: "byte", text: "ByteWorks Computing delays its flagship product launch.", effect: -0.06 },
-  { stockId: "grn",  text: "Greenfield Foods signs a major grocery distribution deal.", effect: 0.05 },
-  { stockId: "grn",  text: "Greenfield Foods recalls a product line.", effect: -0.05 },
-  { stockId: "orb",  text: "Orbital Dynamics wins a lucrative satellite contract.", effect: 0.10 },
-  { stockId: "orb",  text: "A rocket engine test failure spooks Orbital Dynamics investors.", effect: -0.09 },
-  { stockId: "sud",  text: "Sudsy Cola Co. announces a new regional bottling plant.", effect: 0.04 },
-  { stockId: "sud",  text: "A competitor undercuts Sudsy Cola Co. on price.", effect: -0.04 },
-  { stockId: "iron", text: "Ironclad Motors unveils a popular new pickup model.", effect: 0.06 },
-  { stockId: "iron", text: "Ironclad Motors recalls vehicles over a safety defect.", effect: -0.07 },
-  { stockId: "pix",  text: "Pixelmax Studios' new game tops the sales charts.", effect: 0.09 },
-  { stockId: "pix",  text: "A major Pixelmax Studios title is delayed indefinitely.", effect: -0.08 },
-  { stockId: "gld",  text: "Golden Bridge Bank raises its dividend on strong earnings.", effect: 0.05 },
-  { stockId: "gld",  text: "Regulators fine Golden Bridge Bank over compliance lapses.", effect: -0.06 },
-  { stockId: "wnd",  text: "Windrunner Airlines announces new profitable routes.", effect: 0.05 },
-  { stockId: "wnd",  text: "Rising fuel costs squeeze Windrunner Airlines' margins.", effect: -0.05 },
+  { sector: "TECHNOLOGY", text: "Analysts upgrade ByteWorks Computing on strong earnings.", effect: 0.08 },
+  { sector: "TECHNOLOGY", text: "ByteWorks Computing delays its flagship product launch.", effect: -0.06 },
+  { sector: "FOOD",       text: "Greenfield Foods signs a major grocery distribution deal.", effect: 0.05 },
+  { sector: "FOOD",       text: "Greenfield Foods recalls a product line.", effect: -0.05 },
+  { sector: "AEROSPACE",  text: "Orbital Dynamics wins a lucrative satellite contract.", effect: 0.10 },
+  { sector: "AEROSPACE",  text: "A rocket engine test failure spooks Orbital Dynamics investors.", effect: -0.09 },
+  { sector: "BEVERAGES",  text: "Soda industry sales climb as Sudsy Cola Co. expands bottling capacity.", effect: 0.04 },
+  { sector: "BEVERAGES",  text: "Soda industry sales decline as health trends hit Sudsy Cola Co.", effect: -0.04 },
+  { sector: "AUTOMOTIVE", text: "Ironclad Motors unveils a popular new pickup model.", effect: 0.06 },
+  { sector: "AUTOMOTIVE", text: "Ironclad Motors recalls vehicles over a safety defect.", effect: -0.07 },
+  { sector: "GAMING",     text: "Pixelmax Studios' new game tops the sales charts.", effect: 0.09 },
+  { sector: "GAMING",     text: "A major Pixelmax Studios title is delayed indefinitely.", effect: -0.08 },
+  { sector: "BANKING",    text: "Golden Bridge Bank raises its dividend on strong earnings.", effect: 0.05 },
+  { sector: "BANKING",    text: "Regulators fine Golden Bridge Bank over compliance lapses.", effect: -0.06 },
+  { sector: "AVIATION",   text: "Windrunner Airlines announces new profitable routes.", effect: 0.05 },
+  { sector: "AVIATION",   text: "Rising fuel costs squeeze Windrunner Airlines' margins.", effect: -0.05 },
+
+  // general / market-wide — applies to every stock, no sector match needed
+  { sector: null, text: "Investor confidence dips amid economic uncertainty.", effect: -0.03 },
+  { sector: null, text: "A broad market rally lifts stocks across the board.", effect: 0.03 },
+  { sector: null, text: "The central bank holds interest rates steady, easing investor nerves.", effect: 0.02 },
 ];
 
 const NO_HEADLINE_TEXT = "Analysts predict a steady trading day ahead.";
@@ -63,6 +87,78 @@ function pickHeadline() {
 // not something that already happened — so day 1 needs a real (non-null)
 // headline right away, before any click, rather than possibly starting blank.
 let currentHeadline = NEWS_HEADLINES[Math.floor(Math.random() * NEWS_HEADLINES.length)];
+
+// ---------- achievements / celebration toasts ----------
+// Each fires at most once per playthrough (tracked in unlockedAchievements).
+// Separate system from the checkpoint pass/fail banners (milestone 5) — pure
+// game-feel flavor, styled distinctly (gold) from the Market News panel.
+
+const unlockedAchievements = new Set();
+const achievementToastQueue = [];
+let achievementToastActive = false;
+
+function unlockAchievement(id, title, message) {
+  if (unlockedAchievements.has(id)) return;
+  unlockedAchievements.add(id);
+  achievementToastQueue.push({ title, message });
+  processAchievementToastQueue();
+}
+
+const ACHIEVEMENT_TOAST_DURATION_MS = 3000;
+
+function processAchievementToastQueue() {
+  if (achievementToastActive || achievementToastQueue.length === 0) return;
+  achievementToastActive = true;
+
+  const { title, message } = achievementToastQueue.shift();
+  const container = document.getElementById("achievement-toast");
+  container.innerHTML = "";
+
+  // a fresh box element every time — same reasoning as the avatar's pulse
+  // class: a brand-new element always replays its CSS animation, so back-
+  // to-back toasts (from the queue) each visibly pop in rather than only
+  // the first one animating
+  const box = document.createElement("div");
+  box.className = "achievement-toast-box";
+  box.innerHTML = `
+    <div class="achievement-toast-title">${title}</div>
+    <div class="achievement-toast-message">${message}</div>
+  `;
+  container.appendChild(box);
+  container.classList.remove("hidden");
+
+  setTimeout(() => {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    achievementToastActive = false;
+    processAchievementToastQueue();
+  }, ACHIEVEMENT_TOAST_DURATION_MS);
+}
+
+// Checks shared by both buyStock and sellStock after a successful trade.
+function checkCommonTradeAchievements(stock, tradeValue) {
+  unlockAchievement("firstTrade", "FIRST TRADE!", "You made your first move!");
+
+  if (player.day === 1) {
+    unlockAchievement("dayOneInvestor", "DAY ONE INVESTOR!", "Traded right on day one!");
+  }
+
+  if (currentHeadline && currentHeadline.sector !== null && currentHeadline.sector === stock.sector) {
+    unlockAchievement("newsReader", "NEWS READER!", "Acted on today's headline!");
+  }
+
+  if (tradeValue >= 50_000) {
+    unlockAchievement("bigBet", "BIG BET!", "Traded $50,000 or more in one move!");
+  }
+
+  const ownedCount = stocks.filter(s => (player.holdings[s.id] || 0) > 0).length;
+  if (ownedCount >= 4) {
+    unlockAchievement("diversified", "DIVERSIFIED!", "Own shares in 4 or more companies!");
+  }
+  if (ownedCount >= stocks.length) {
+    unlockAchievement("marketMaven", "MARKET MAVEN!", "Own a piece of every company!");
+  }
+}
 
 // ---------- formatting helpers ----------
 
@@ -108,7 +204,14 @@ function nudgePrice(stock) {
   return Math.max(0.5, Math.round(nextPrice * 100) / 100);
 }
 
+// A day's net worth swings from a few hundred to low thousands for a modest,
+// diversified position under the current drift/volatility — $5,000 in one
+// day is a meaningfully large, but reachable, single-day gain.
+const BIG_WIN_THRESHOLD = 5_000;
+
 function advanceDay() {
+  const netWorthBefore = netWorth();
+
   player.day += 1;
 
   // the headline on screen right now predicts THIS move, not the next one —
@@ -119,7 +222,11 @@ function advanceDay() {
     const previousPrice = stock.price;
     let newPrice = nudgePrice(stock);
 
-    if (activeHeadline && activeHeadline.stockId === stock.id) {
+    // sector: null headlines are general/market-wide and hit every stock;
+    // otherwise the headline only affects stocks in the matching sector
+    const headlineApplies = activeHeadline &&
+      (activeHeadline.sector === null || activeHeadline.sector === stock.sector);
+    if (headlineApplies) {
       newPrice = Math.max(0.5, Math.round(newPrice * (1 + activeHeadline.effect) * 100) / 100);
     }
 
@@ -130,7 +237,25 @@ function advanceDay() {
 
   currentHeadline = pickHeadline();
 
+  const netWorthAfter = netWorth();
+
   renderAll();
+
+  // Separate, additional reaction layer on top of the pace-based mood
+  // (getAvatarStateForNetWorth): fires on EVERY Advance Day based on that
+  // day's own immediate result, briefly overriding the pace state, then
+  // reverting to it. Not a replacement for the pace comparison — this is a
+  // day-over-day delta, checked fresh every single click.
+  const direction = netWorthAfter > netWorthBefore ? "up"
+    : netWorthAfter < netWorthBefore ? "down"
+    : null;
+  flashAvatarReaction(direction);
+  const netWorthDelta = netWorthAfter - netWorthBefore;
+  showFloatingDelta(netWorthDelta);
+
+  if (netWorthDelta >= BIG_WIN_THRESHOLD) {
+    unlockAchievement("bigWin", "BIG WIN!", "A huge net worth gain in one day!");
+  }
 }
 
 // ---------- trading ----------
@@ -148,10 +273,9 @@ function setTradeFeedback(message) {
   document.getElementById("trade-feedback").textContent = message;
 }
 
-// Refreshes just cash + shares-owned after a trade. Net worth is left as-is
-// on purpose — it isn't wired up to react to trades until milestone 4.
+// Refreshes cash, net worth, and shares-owned immediately after a trade.
 function refreshAfterTrade() {
-  document.getElementById("stat-cash").textContent = formatMoney(player.cash);
+  renderDashboard();
   renderStockTable();
   syncSelectedStockRow();
 }
@@ -172,10 +296,21 @@ function buyStock() {
     return;
   }
 
+  const previousShares = player.holdings[stock.id] || 0;
+  const previousCostBasis = player.costBasis[stock.id] || 0;
+  const newShares = previousShares + shares;
+  // weighted average cost per share; a fresh position just starts at this
+  // trade's price rather than blending with a stale/zero previous average
+  player.costBasis[stock.id] = previousShares > 0
+    ? (previousCostBasis * previousShares + cost) / newShares
+    : stock.price;
+
   player.cash -= cost;
-  player.holdings[stock.id] = (player.holdings[stock.id] || 0) + shares;
+  player.holdings[stock.id] = newShares;
 
   setTradeFeedback(`Bought ${shares} share${shares === 1 ? "" : "s"} of ${stock.id.toUpperCase()} for ${formatPrice(cost)}.`);
+  showFloatingDelta(-cost);
+  checkCommonTradeAchievements(stock, cost);
   refreshAfterTrade();
 }
 
@@ -196,10 +331,18 @@ function sellStock() {
   }
 
   const proceeds = stock.price * shares;
+  const avgCost = player.costBasis[stock.id] || 0;
+
   player.cash += proceeds;
   player.holdings[stock.id] = owned - shares;
 
   setTradeFeedback(`Sold ${shares} share${shares === 1 ? "" : "s"} of ${stock.id.toUpperCase()} for ${formatPrice(proceeds)}.`);
+  showFloatingDelta(proceeds);
+
+  if (stock.price > avgCost) {
+    unlockAchievement("profitTaker", "PROFIT TAKER!", "Sold for more than you paid!");
+  }
+  checkCommonTradeAchievements(stock, proceeds);
   refreshAfterTrade();
 }
 
@@ -211,6 +354,8 @@ function renderNews() {
     : NO_HEADLINE_TEXT;
 }
 
+let lastPaceState = null; // tracks the pace-based mood specifically, for detecting a "Comeback Kid" recovery
+
 function renderDashboard() {
   document.getElementById("stat-day").textContent = `${player.day} / ${config.maxDays}`;
   document.getElementById("stat-cash").textContent = formatMoney(player.cash);
@@ -220,6 +365,21 @@ function renderDashboard() {
   document.getElementById("stat-checkpoint").textContent = upcoming
     ? `DAY ${upcoming.day} — ${formatMoney(upcoming.requiredNetWorth)}`
     : "ALL CLEARED";
+
+  const currentNetWorth = netWorth();
+  const pace = expectedPace(player.day);
+  const avatarState = getAvatarStateForNetWorth(player.day, currentNetWorth);
+
+  if (lastPaceState === "stressed" && (avatarState === "neutral" || avatarState === "happy")) {
+    unlockAchievement("comebackKid", "COMEBACK KID!", "Bounced back from being stressed!");
+  }
+  lastPaceState = avatarState;
+
+  setAvatarState(avatarState);
+
+  // TEMP DEBUG — remove once avatar-reactivity issue is confirmed fixed
+  document.getElementById("debug-line").textContent =
+    `STATE: ${avatarState} | PACE: ${formatMoney(pace)} | NET WORTH: ${formatMoney(currentNetWorth)}`;
 }
 
 function renderStockTable() {
@@ -241,7 +401,7 @@ function renderStockTable() {
 
     tr.innerHTML = `
       <td class="stock-ticker">${stock.id.toUpperCase()}</td>
-      <td class="stock-company">${stock.name}</td>
+      <td class="stock-company">${stock.name}<button type="button" class="info-icon" data-info-id="${stock.id}" aria-label="About ${stock.name}">&#9432;</button></td>
       <td class="stock-price ${flashClass}" data-stock-id="${stock.id}">${formatPrice(stock.price)}</td>
       <td class="stock-change ${changeClass} ${flashClass}" data-change-id="${stock.id}">${changeText}</td>
       <td>${shares}</td>
@@ -396,15 +556,69 @@ function buildPlayerPortrait(state) {
   return svg;
 }
 
-function setAvatarState(state) {
+let currentAvatarState = null; // tracks what's actually on screen right now
+
+function setAvatarState(state, { forceAnimate = false } = {}) {
+  // bounce whenever the expression actually changes, whether that's the
+  // pace-based mood shifting (e.g. after a trade) or the day-over-day flash
+  // (which always bounces, forced, even if it happens to match what's
+  // already showing — the point there is reacting to THIS day specifically)
+  const shouldAnimate = forceAnimate || state !== currentAvatarState;
+  currentAvatarState = state;
+
   const container = document.getElementById("player-avatar");
   container.innerHTML = "";
-  container.appendChild(buildPlayerPortrait(state));
+  const svg = buildPlayerPortrait(state);
+  // the SVG is a brand-new element every call (never reused), so adding the
+  // animation class here always plays it fresh — no stuck-class/no-replay
+  // risk, since there's no persistent element whose class could go stale
+  if (shouldAnimate) svg.classList.add("avatar-reaction-pulse");
+  container.appendChild(svg);
 }
 
-// Future hook: once net worth tracking exists (milestone 4), call
-// setAvatarState(getAvatarStateForNetWorth(player.day, netWorth())) after each
-// Advance Day. Nothing calls this yet.
+let avatarFlashTimer = null;
+const AVATAR_FLASH_DURATION_MS = 1800;
+
+// Day-over-day reaction: briefly shows happy/stressed based on whether THIS
+// Advance Day's net worth went up or down, then reverts to the pace-based
+// mood (getAvatarStateForNetWorth) once the flash window ends. Independent
+// of, and layered on top of, the pace-based state — not a replacement.
+function flashAvatarReaction(direction) {
+  if (!direction) return; // net worth unchanged this day — nothing to flash
+
+  if (avatarFlashTimer) {
+    clearTimeout(avatarFlashTimer);
+    avatarFlashTimer = null;
+  }
+
+  const flashState = direction === "up" ? "happy" : "stressed";
+  setAvatarState(flashState, { forceAnimate: true });
+
+  avatarFlashTimer = setTimeout(() => {
+    avatarFlashTimer = null;
+    // recompute fresh rather than reuse a captured value, in case a trade
+    // happened during the flash window and changed the pace-based mood
+    setAvatarState(getAvatarStateForNetWorth(player.day, netWorth()));
+  }, AVATAR_FLASH_DURATION_MS);
+}
+
+// Floating "+$X" / "-$X" popup near the avatar — spawned on a trade's own
+// cash flow, or on a day-over-day net worth change. Removes itself once its
+// float-up/fade-out animation finishes.
+function showFloatingDelta(amount) {
+  if (!amount) return;
+
+  const container = document.querySelector(".player-avatar-box");
+  const el = document.createElement("div");
+  el.className = `floating-delta ${amount > 0 ? "positive" : "negative"}`;
+  el.textContent = `${amount > 0 ? "+" : "-"}${formatMoney(Math.abs(amount))}`;
+  el.addEventListener("animationend", () => el.remove());
+  container.appendChild(el);
+}
+
+// Pace curve the player avatar reacts to (called from renderDashboard on every
+// render — see getAvatarStateForNetWorth below): linear interpolation between
+// the starting cash and each milestone's required net worth.
 function expectedPace(day) {
   const points = [
     { day: 0, value: STARTING_CASH },
@@ -423,19 +637,63 @@ function expectedPace(day) {
   return points[points.length - 1].value;
 }
 
+// Thresholds are tuned tight on purpose: with the diversify-and-hold strategy
+// the price engine was tuned around (see DAILY_DRIFT), net worth tracks
+// expectedPace's linear line closely, especially in the first half of a
+// 30-day game — at the original +5%/-10% band it took until ~day 16 for the
+// FIRST expression change all game (verified against real Advance Day
+// clicks). +2%/-3% reacts by roughly day 6-10 instead, so the avatar is
+// visibly alive well within a normal playthrough rather than static for most
+// of it.
+const AVATAR_GRACE_PERIOD_DAYS = 3;
+
 function getAvatarStateForNetWorth(day, currentNetWorth) {
+  // grace period: a brand-new player hasn't had a real chance to trade yet,
+  // so hold the pace-based mood at neutral (not just suppressing "stressed")
+  // through day 3. The day-over-day flash reaction is untouched by this — it
+  // calls this function only for its post-flash revert target.
+  if (day <= AVATAR_GRACE_PERIOD_DAYS) return "neutral";
+
   const pace = expectedPace(day);
-  if (currentNetWorth >= pace * 1.05) return "happy";
-  if (currentNetWorth < pace * 0.9) return "stressed";
+  if (currentNetWorth >= pace * 1.02) return "happy";
+  if (currentNetWorth < pace * 0.97) return "stressed";
   return "neutral";
 }
 
-setAvatarState("neutral");
+// ---------- stock info popup ----------
+
+function openStockInfo(stockId) {
+  const stock = stocks.find(s => s.id === stockId);
+  if (!stock) return;
+
+  document.getElementById("stock-info-name").textContent = stock.name;
+  document.getElementById("stock-info-meta").textContent = `${stock.id.toUpperCase()} · ${stock.sector}`;
+  document.getElementById("stock-info-description").textContent = stock.description;
+  document.getElementById("stock-info-modal").classList.remove("hidden");
+}
+
+function closeStockInfo() {
+  document.getElementById("stock-info-modal").classList.add("hidden");
+}
 
 // ---------- event wiring ----------
 
 document.getElementById("buy-btn").addEventListener("click", buyStock);
 document.getElementById("sell-btn").addEventListener("click", sellStock);
+
+// event delegation on the tbody — rows get rebuilt on every render, so a
+// listener on individual info-icon buttons wouldn't survive a re-render
+document.getElementById("stock-table-body").addEventListener("click", (event) => {
+  const btn = event.target.closest(".info-icon");
+  if (!btn) return;
+  openStockInfo(btn.dataset.infoId);
+});
+
+document.getElementById("stock-info-close").addEventListener("click", closeStockInfo);
+
+document.getElementById("stock-info-modal").addEventListener("click", (event) => {
+  if (event.target.id === "stock-info-modal") closeStockInfo();
+});
 
 document.getElementById("advance-day-btn").addEventListener("click", () => {
   // milestone/win/loss checks land in a later step — for now just stop

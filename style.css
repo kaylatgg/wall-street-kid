@@ -77,6 +77,54 @@ html, body {
     radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.4) 100%);
 }
 
+/* ---------- Achievement toasts ---------- */
+/* Same bordered-panel language as Market News (border + padding box), but a
+   bright gold border/glow instead of the neutral chrome border, so these
+   read as "you did something cool" rather than a routine news update.
+   Fixed + pointer-events:none, so it never affects the one-screen layout. */
+
+.achievement-toast {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.achievement-toast-box {
+  border: 4px solid var(--nes-gold);
+  background: var(--nes-navy);
+  padding: 10px 22px;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 0 0 4px var(--nes-black), 0 0 16px 2px rgba(255, 210, 63, 0.55), 6px 6px 0 var(--nes-black);
+  animation: achievementToastPop 3s ease-in-out forwards;
+}
+
+@keyframes achievementToastPop {
+  0%   { opacity: 0; transform: translateY(-14px) scale(0.96); }
+  10%  { opacity: 1; transform: translateY(0) scale(1.04); }
+  16%  { transform: translateY(0) scale(1); }
+  85%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-14px) scale(0.96); }
+}
+
+.achievement-toast-title {
+  font-family: var(--font-display);
+  color: var(--nes-gold);
+  font-size: 13px;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  text-shadow: 2px 2px 0 var(--nes-black);
+}
+
+.achievement-toast-message {
+  font-family: var(--font-body);
+  color: var(--nes-white);
+  font-size: 17px;
+}
+
 /* ---------- Title bar ---------- */
 
 .title-bar {
@@ -310,6 +358,24 @@ html, body {
   color: var(--nes-gray);
 }
 
+.info-icon {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1;
+  color: var(--nes-border);
+  cursor: pointer;
+  vertical-align: -1px;
+}
+
+.info-icon:hover,
+.info-icon:focus-visible {
+  color: var(--nes-gold);
+}
+
 .stock-price {
   color: var(--nes-green);
 }
@@ -436,6 +502,15 @@ html, body {
   min-height: 20px;
 }
 
+/* TEMP DEBUG — remove once avatar-reactivity issue is confirmed fixed */
+.debug-line {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.2;
+  color: #ff66ff;
+  word-break: break-word;
+}
+
 .advance-day-wrap {
   /* was margin-top: auto (pushed this row to the bottom, leaving the space
      above it blank) — flex: 1 instead grows the row itself to consume all
@@ -548,6 +623,46 @@ html, body {
   line-height: 0;
 }
 
+/* day-over-day reaction flash — applied directly to the freshly-built SVG
+   element each time (see setAvatarState), so it always replays regardless of
+   whether the previous state also had it */
+@keyframes avatarReactionPulse {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.18); }
+  60%  { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+
+.avatar-reaction-pulse {
+  transform-origin: center;
+  animation: avatarReactionPulse 0.5s ease-out;
+}
+
+/* floating +$/-$ popup — spawned near the avatar on a trade or a day-over-day
+   net worth change, then removed once the animation finishes */
+@keyframes floatUpFade {
+  0%   { opacity: 0; transform: translate(-50%, 0); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -36px); }
+}
+
+.floating-delta {
+  position: absolute;
+  left: 50%;
+  top: 6%;
+  transform: translate(-50%, 0);
+  font-family: var(--font-body);
+  font-size: 20px;
+  letter-spacing: 0.5px;
+  text-shadow: 2px 2px 0 var(--nes-black);
+  pointer-events: none;
+  z-index: 30;
+  animation: floatUpFade 1.2s ease-out forwards;
+}
+
+.floating-delta.positive { color: var(--nes-green); }
+.floating-delta.negative { color: var(--nes-red); }
+
 /* ---------- Overlay (milestones / win / game-over) ---------- */
 
 .overlay {
@@ -581,6 +696,12 @@ html, body {
   font-size: 18px;
   line-height: 1.6;
   margin-bottom: 20px;
+}
+
+.stock-info-meta {
+  color: var(--nes-gold);
+  letter-spacing: 1px;
+  margin-bottom: 8px !important;
 }
 
 .overlay-box .btn {

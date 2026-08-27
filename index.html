@@ -90,6 +90,9 @@
           <p class="trade-feedback" id="trade-feedback">&nbsp;</p>
         </div>
 
+        <!-- TEMP DEBUG — remove once avatar-reactivity issue is confirmed fixed -->
+        <p id="debug-line" class="debug-line"></p>
+
         <div class="advance-day-wrap">
           <button id="advance-day-btn" class="btn btn-advance">ADVANCE DAY ▶</button>
 
@@ -107,6 +110,21 @@
 
 <!-- Purely decorative retro-CRT scanline/vignette layer — fixed, pointer-events:none -->
 <div class="crt-overlay" aria-hidden="true"></div>
+
+<!-- One-time celebration toasts (achievements) — fixed, does not affect layout.
+     Content is built fresh into here each time by app.js so the pop-in
+     animation always replays. -->
+<div id="achievement-toast" class="achievement-toast hidden"></div>
+
+<!-- Company info popup — click a stock's info icon in the Stock Exchange table -->
+<div id="stock-info-modal" class="overlay hidden">
+  <div class="overlay-box">
+    <h2 id="stock-info-name">COMPANY NAME</h2>
+    <p id="stock-info-meta" class="stock-info-meta"></p>
+    <p id="stock-info-description"></p>
+    <button id="stock-info-close" class="btn">CLOSE</button>
+  </div>
+</div>
 
 <!-- Milestone / game-over / win overlays (hidden for now, wired up in step 5) -->
 <div id="overlay" class="overlay hidden">
