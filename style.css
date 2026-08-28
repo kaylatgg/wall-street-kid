@@ -125,15 +125,51 @@ html, body {
   font-size: 17px;
 }
 
+/* checkpoint-pass banner — same toast mechanics/queue as achievements, but a
+   distinct green treatment (the "positive outcome" color already used for
+   money values elsewhere) so a checkpoint clear doesn't read as just another
+   achievement bonus */
+.achievement-toast-box.toast-green {
+  border-color: var(--nes-green);
+  box-shadow: 0 0 0 4px var(--nes-black), 0 0 16px 2px rgba(0, 231, 86, 0.5), 6px 6px 0 var(--nes-black);
+}
+
+.achievement-toast-box.toast-green .achievement-toast-title {
+  color: var(--nes-green);
+}
+
 /* ---------- Title bar ---------- */
 
 .title-bar {
+  position: relative;
   flex: 0 0 auto;
   text-align: center;
   border: 4px solid var(--nes-border);
   background: var(--nes-navy);
   padding: 6px 8px;
   box-shadow: 0 0 0 4px var(--nes-black), 6px 6px 0 var(--nes-black);
+}
+
+/* absolutely positioned in the title bar's own corner — adds no height to
+   the layout, so it can't affect the one-screen fit */
+.sound-toggle-btn {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  background: var(--nes-black);
+  color: var(--nes-white);
+  border: 2px solid var(--nes-border);
+  cursor: pointer;
+}
+
+.sound-toggle-btn:hover,
+.sound-toggle-btn:focus-visible {
+  border-color: var(--nes-gold);
 }
 
 .title-bar h1 {
@@ -307,10 +343,22 @@ html, body {
 
 .stock-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin-top: 4px;
   font-size: 15px;
 }
+
+/* fixed column widths — COMPANY previously auto-sized to ~40% of the table
+   (2-3x wider than any company name actually needs) just by soaking up
+   leftover space; reclaiming that is what makes room for GAIN/LOSS without
+   the table (or the one-screen layout) getting any wider */
+.stock-table th:nth-child(1), .stock-table td:nth-child(1) { width: 9%; }  /* TICKER */
+.stock-table th:nth-child(2), .stock-table td:nth-child(2) { width: 24%; } /* COMPANY */
+.stock-table th:nth-child(3), .stock-table td:nth-child(3) { width: 12%; } /* PRICE */
+.stock-table th:nth-child(4), .stock-table td:nth-child(4) { width: 11%; } /* CHANGE */
+.stock-table th:nth-child(5), .stock-table td:nth-child(5) { width: 22%; } /* GAIN/LOSS */
+.stock-table th:nth-child(6), .stock-table td:nth-child(6) { width: 22%; } /* SHARES OWNED */
 
 .stock-table th {
   text-align: left;
@@ -322,7 +370,8 @@ html, body {
   white-space: nowrap;
 }
 
-.stock-table th:nth-child(4) {
+.stock-table th:nth-child(4),
+.stock-table th:nth-child(5) {
   text-align: center;
 }
 
@@ -410,6 +459,16 @@ html, body {
 .stock-change.positive { color: var(--nes-green); }
 .stock-change.negative { color: var(--nes-red); }
 .stock-change.neutral  { color: var(--nes-gray); }
+
+.stock-gain-loss {
+  font-size: 14px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stock-gain-loss.positive { color: var(--nes-green); }
+.stock-gain-loss.negative { color: var(--nes-red); }
+.stock-gain-loss.neutral  { color: var(--nes-gray); }
 
 /* ---------- Trade panel ---------- */
 
@@ -502,14 +561,6 @@ html, body {
   min-height: 20px;
 }
 
-/* TEMP DEBUG — remove once avatar-reactivity issue is confirmed fixed */
-.debug-line {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.2;
-  color: #ff66ff;
-  word-break: break-word;
-}
 
 .advance-day-wrap {
   /* was margin-top: auto (pushed this row to the bottom, leaving the space
@@ -663,7 +714,7 @@ html, body {
 .floating-delta.positive { color: var(--nes-green); }
 .floating-delta.negative { color: var(--nes-red); }
 
-/* ---------- Overlay (milestones / win / game-over) ---------- */
+/* ---------- Overlay (stock info / win / game-over) ---------- */
 
 .overlay {
   position: fixed;
@@ -672,7 +723,12 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  /* higher than the achievement/checkpoint toast (1000) and everything else
+     in the page — the win/game-over screen must sit above any open modal or
+     toast. #overlay also comes after #stock-info-modal in the DOM, so on the
+     rare chance both this class's users were visible at once, this one wins
+     the stacking order too. */
+  z-index: 1500;
 }
 
 .overlay-box {
@@ -706,6 +762,32 @@ html, body {
 
 .overlay-box .btn {
   width: 100%;
+}
+
+/* win / game-over variants — visually distinct from each other and from the
+   neutral-bordered stock-info modal that reuses the same base classes */
+.overlay-avatar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.overlay-box.win {
+  border-color: var(--nes-gold);
+  box-shadow: 0 0 0 4px var(--nes-black), 0 0 28px 4px rgba(255, 210, 63, 0.55), 8px 8px 0 var(--nes-black);
+}
+
+.overlay-box.win h2 {
+  color: var(--nes-gold);
+}
+
+.overlay-box.game-over {
+  border-color: var(--nes-red);
+  box-shadow: 0 0 0 4px var(--nes-black), 0 0 28px 4px rgba(255, 51, 85, 0.45), 8px 8px 0 var(--nes-black);
+}
+
+.overlay-box.game-over h2 {
+  color: var(--nes-red);
 }
 
 /* ---------- Responsive ---------- */

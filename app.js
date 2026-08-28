@@ -44,6 +44,10 @@ const milestones = [
 
 const config = { maxDays: 30 };
 
+// Snapshot of each stock's starting price, captured once before any gameplay
+// mutates stock.price — Play Again resets against this, not a hardcoded copy.
+const STOCK_STARTING_PRICES = Object.fromEntries(stocks.map(s => [s.id, s.price]));
+
 // ---------- news / tips ----------
 // Each sector-tagged headline carries a price effect (a signed percentage)
 // applied to every stock in that sector on top of its normal drift+volatility
@@ -54,63 +58,110 @@ const config = { maxDays: 30 };
 const NEWS_HEADLINES = [
   { sector: "TECHNOLOGY", text: "Analysts upgrade ByteWorks Computing on strong earnings.", effect: 0.08 },
   { sector: "TECHNOLOGY", text: "ByteWorks Computing delays its flagship product launch.", effect: -0.06 },
+  { sector: "TECHNOLOGY", text: "ByteWorks Computing unveils a breakthrough chip design.", effect: 0.07 },
+  { sector: "TECHNOLOGY", text: "A data breach rattles confidence in ByteWorks Computing.", effect: -0.05 },
   { sector: "FOOD",       text: "Greenfield Foods signs a major grocery distribution deal.", effect: 0.05 },
   { sector: "FOOD",       text: "Greenfield Foods recalls a product line.", effect: -0.05 },
+  { sector: "FOOD",       text: "A supply shortage hits Greenfield Foods' production line.", effect: -0.04 },
+  { sector: "FOOD",       text: "Greenfield Foods rolls out a popular new snack line.", effect: 0.04 },
   { sector: "AEROSPACE",  text: "Orbital Dynamics wins a lucrative satellite contract.", effect: 0.10 },
   { sector: "AEROSPACE",  text: "A rocket engine test failure spooks Orbital Dynamics investors.", effect: -0.09 },
+  { sector: "AEROSPACE",  text: "Orbital Dynamics successfully lands a reusable rocket booster.", effect: 0.07 },
+  { sector: "AEROSPACE",  text: "Orbital Dynamics loses a bid for a major government contract.", effect: -0.06 },
   { sector: "BEVERAGES",  text: "Soda industry sales climb as Sudsy Cola Co. expands bottling capacity.", effect: 0.04 },
   { sector: "BEVERAGES",  text: "Soda industry sales decline as health trends hit Sudsy Cola Co.", effect: -0.04 },
+  { sector: "BEVERAGES",  text: "Sudsy Cola Co. launches a viral new flavor.", effect: 0.05 },
+  { sector: "BEVERAGES",  text: "A glass bottling defect forces a recall at Sudsy Cola Co.", effect: -0.05 },
   { sector: "AUTOMOTIVE", text: "Ironclad Motors unveils a popular new pickup model.", effect: 0.06 },
   { sector: "AUTOMOTIVE", text: "Ironclad Motors recalls vehicles over a safety defect.", effect: -0.07 },
+  { sector: "AUTOMOTIVE", text: "Ironclad Motors faces a labor strike at its main plant.", effect: -0.05 },
+  { sector: "AUTOMOTIVE", text: "Ironclad Motors reports record quarterly vehicle sales.", effect: 0.05 },
   { sector: "GAMING",     text: "Pixelmax Studios' new game tops the sales charts.", effect: 0.09 },
   { sector: "GAMING",     text: "A major Pixelmax Studios title is delayed indefinitely.", effect: -0.08 },
+  { sector: "GAMING",     text: "Pixelmax Studios lays off staff after a disappointing quarter.", effect: -0.06 },
+  { sector: "GAMING",     text: "Pixelmax Studios signs a hit franchise licensing deal.", effect: 0.06 },
   { sector: "BANKING",    text: "Golden Bridge Bank raises its dividend on strong earnings.", effect: 0.05 },
   { sector: "BANKING",    text: "Regulators fine Golden Bridge Bank over compliance lapses.", effect: -0.06 },
+  { sector: "BANKING",    text: "Golden Bridge Bank expands into a new state market.", effect: 0.04 },
+  { sector: "BANKING",    text: "Golden Bridge Bank reports a rise in loan defaults.", effect: -0.04 },
   { sector: "AVIATION",   text: "Windrunner Airlines announces new profitable routes.", effect: 0.05 },
   { sector: "AVIATION",   text: "Rising fuel costs squeeze Windrunner Airlines' margins.", effect: -0.05 },
+  { sector: "AVIATION",   text: "Windrunner Airlines cancels flights amid a pilot shortage.", effect: -0.06 },
+  { sector: "AVIATION",   text: "Windrunner Airlines adds a fleet of fuel-efficient jets.", effect: 0.04 },
 
   // general / market-wide — applies to every stock, no sector match needed
   { sector: null, text: "Investor confidence dips amid economic uncertainty.", effect: -0.03 },
   { sector: null, text: "A broad market rally lifts stocks across the board.", effect: 0.03 },
   { sector: null, text: "The central bank holds interest rates steady, easing investor nerves.", effect: 0.02 },
+  { sector: null, text: "Inflation data comes in higher than expected, rattling markets.", effect: -0.025 },
+  { sector: null, text: "A wave of upbeat earnings reports boosts overall market sentiment.", effect: 0.025 },
+  { sector: null, text: "Currency swings ripple through the broader stock market.", effect: -0.02 },
 ];
 
 const NO_HEADLINE_TEXT = "Analysts predict a steady trading day ahead.";
-const NO_HEADLINE_CHANCE = 0.35; // roughly 1 in 3 days has no notable tip
+// Was 0.35 (35% placeholder / 65% real) — even though "some real headline"
+// was the majority outcome, the placeholder is one fixed piece of text, so
+// it was still the single most-repeated exact message a player saw (any one
+// of the 38 real headlines individually shows up far less often than that).
+// 0.15 targets ~80-85% real / ~15-20% placeholder, verified empirically
+// below rather than assumed from the math.
+const NO_HEADLINE_CHANCE = 0.15;
 
 function pickHeadline() {
   if (Math.random() < NO_HEADLINE_CHANCE) return null;
   return NEWS_HEADLINES[Math.floor(Math.random() * NEWS_HEADLINES.length)];
 }
 
-// currentHeadline describes what's about to happen on the NEXT Advance Day,
-// not something that already happened — so day 1 needs a real (non-null)
-// headline right away, before any click, rather than possibly starting blank.
-let currentHeadline = NEWS_HEADLINES[Math.floor(Math.random() * NEWS_HEADLINES.length)];
+// A guaranteed real (non-null) headline — used both for day 1 at load time
+// and to restore "day 1's headline" on Play Again. currentHeadline describes
+// what's about to happen on the NEXT Advance Day, not something that already
+// happened, so day 1 always needs a real tip rather than possibly starting
+// blank.
+function pickInitialHeadline() {
+  return NEWS_HEADLINES[Math.floor(Math.random() * NEWS_HEADLINES.length)];
+}
 
-// ---------- achievements / celebration toasts ----------
-// Each fires at most once per playthrough (tracked in unlockedAchievements).
-// Separate system from the checkpoint pass/fail banners (milestone 5) — pure
-// game-feel flavor, styled distinctly (gold) from the Market News panel.
+let currentHeadline = pickInitialHeadline();
+
+// ---------- toasts (achievements + checkpoint-pass banners) ----------
+// One shared queue/element so an achievement and a checkpoint pass landing
+// on the same Advance Day serialize cleanly instead of overlapping. Each
+// achievement fires at most once per playthrough (unlockedAchievements);
+// checkpoint-pass banners aren't tracked there since checkMilestone only
+// ever evaluates a given milestone day once per playthrough anyway.
 
 const unlockedAchievements = new Set();
-const achievementToastQueue = [];
-let achievementToastActive = false;
+const toastQueue = [];
+let toastActive = false;
+const TOAST_DURATION_MS = 3000;
+
+// variant: "gold" (achievement) or "green" (checkpoint pass) — see .toast-green in CSS
+function queueToast(title, message, variant = "gold") {
+  toastQueue.push({ title, message, variant });
+  processToastQueue();
+}
 
 function unlockAchievement(id, title, message) {
   if (unlockedAchievements.has(id)) return;
   unlockedAchievements.add(id);
-  achievementToastQueue.push({ title, message });
-  processAchievementToastQueue();
+  queueToast(title, message, "gold");
 }
 
-const ACHIEVEMENT_TOAST_DURATION_MS = 3000;
+function processToastQueue() {
+  if (toastActive || toastQueue.length === 0) return;
+  toastActive = true;
 
-function processAchievementToastQueue() {
-  if (achievementToastActive || achievementToastQueue.length === 0) return;
-  achievementToastActive = true;
+  const { title, message, variant } = toastQueue.shift();
 
-  const { title, message } = achievementToastQueue.shift();
+  // sound plays when the toast actually pops in (not at unlock time, which
+  // could be several seconds earlier if things queued up), so audio and
+  // visual always land together
+  if (variant === "green") {
+    SOUNDS.checkpointPass();
+  } else {
+    SOUNDS.achievement();
+  }
+
   const container = document.getElementById("achievement-toast");
   container.innerHTML = "";
 
@@ -119,7 +170,7 @@ function processAchievementToastQueue() {
   // to-back toasts (from the queue) each visibly pop in rather than only
   // the first one animating
   const box = document.createElement("div");
-  box.className = "achievement-toast-box";
+  box.className = `achievement-toast-box toast-${variant}`;
   box.innerHTML = `
     <div class="achievement-toast-title">${title}</div>
     <div class="achievement-toast-message">${message}</div>
@@ -130,9 +181,111 @@ function processAchievementToastQueue() {
   setTimeout(() => {
     container.classList.add("hidden");
     container.innerHTML = "";
-    achievementToastActive = false;
-    processAchievementToastQueue();
-  }, ACHIEVEMENT_TOAST_DURATION_MS);
+    toastActive = false;
+    processToastQueue();
+  }, TOAST_DURATION_MS);
+}
+
+// ---------- sound effects (generated, no external audio files) ----------
+// A single shared AudioContext, created lazily on first use rather than at
+// page load — browsers block audio until a user gesture, and every sound
+// here is only ever triggered from inside a click handler anyway, so the
+// context always ends up created within a valid user-gesture call stack.
+
+let audioCtx = null;
+let soundMuted = false;
+
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContextClass();
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+// Single short tone with a quick attack + exponential decay envelope, the
+// classic simple chiptune-blip shape. type is an OscillatorNode waveform
+// ("square"/"triangle"/"sawtooth"/"sine"); freqEnd (optional) sweeps the
+// pitch linearly across the tone's duration, for whoosh/tick-style sounds.
+function playTone({ freq, duration = 0.1, type = "square", startDelay = 0, peakGain = 0.15, freqEnd = null }) {
+  if (soundMuted) return;
+
+  const ctx = getAudioContext();
+  const t0 = ctx.currentTime + startDelay;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if (freqEnd !== null) {
+    osc.frequency.linearRampToValueAtTime(freqEnd, t0 + duration);
+  }
+
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(peakGain, t0 + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.02);
+}
+
+// Plays a list of tones back to back (each starting where the previous one's
+// duration ends) — used for the little multi-note arpeggios/fanfares.
+function playSequence(notes) {
+  if (soundMuted) return;
+  let cursor = 0;
+  for (const note of notes) {
+    playTone({ ...note, startDelay: cursor });
+    cursor += note.duration;
+  }
+}
+
+// Musical note frequencies (standard 12-TET), named for readability below.
+const NOTE = { C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880.00, C6: 1046.50, E6: 1318.51, G6: 1567.98 };
+
+const SOUNDS = {
+  buy: () => playTone({ freq: NOTE.A5, duration: 0.08, type: "square", peakGain: 0.12 }),
+  sell: () => playTone({ freq: NOTE.D5, duration: 0.08, type: "square", peakGain: 0.12 }),
+  advanceDay: () => playTone({ freq: 220, freqEnd: 440, duration: 0.16, type: "triangle", peakGain: 0.1 }),
+  achievement: () => playSequence([
+    { freq: NOTE.C5, duration: 0.08, type: "square", peakGain: 0.12 },
+    { freq: NOTE.E5, duration: 0.08, type: "square", peakGain: 0.12 },
+    { freq: NOTE.G5, duration: 0.08, type: "square", peakGain: 0.12 },
+    { freq: NOTE.C6, duration: 0.14, type: "square", peakGain: 0.14 },
+  ]),
+  checkpointPass: () => playSequence([
+    { freq: NOTE.C5, duration: 0.12, type: "triangle", peakGain: 0.13 },
+    { freq: NOTE.E5, duration: 0.12, type: "triangle", peakGain: 0.13 },
+    { freq: NOTE.G5, duration: 0.22, type: "triangle", peakGain: 0.15 },
+  ]),
+  win: () => playSequence([
+    { freq: NOTE.C5, duration: 0.11, type: "square", peakGain: 0.13 },
+    { freq: NOTE.E5, duration: 0.11, type: "square", peakGain: 0.13 },
+    { freq: NOTE.G5, duration: 0.11, type: "square", peakGain: 0.13 },
+    { freq: NOTE.C6, duration: 0.11, type: "square", peakGain: 0.14 },
+    { freq: NOTE.E6, duration: 0.11, type: "square", peakGain: 0.14 },
+    { freq: NOTE.G6, duration: 0.4, type: "square", peakGain: 0.16 },
+  ]),
+  gameOver: () => playSequence([
+    { freq: NOTE.G5, duration: 0.16, type: "sawtooth", peakGain: 0.12 },
+    { freq: NOTE.E5, duration: 0.16, type: "sawtooth", peakGain: 0.12 },
+    { freq: NOTE.C5, duration: 0.35, type: "sawtooth", peakGain: 0.12 },
+  ]),
+};
+
+function toggleSoundMuted() {
+  soundMuted = !soundMuted;
+  document.getElementById("sound-toggle-btn").textContent = soundMuted ? "🔇" : "🔊";
+  if (!soundMuted) {
+    // resuming from a click is itself a user gesture, so this is a safe
+    // place to warm up the context rather than waiting for the next sound
+    getAudioContext();
+  }
 }
 
 // Checks shared by both buyStock and sellStock after a successful trade.
@@ -171,7 +324,11 @@ function formatPrice(amount) {
 }
 
 function nextMilestone() {
-  return milestones.find(m => m.day >= player.day) || null;
+  // strictly greater-than: by the time player.day reaches a milestone's own
+  // day, checkMilestone() has already resolved it (pass banner or freeze),
+  // so it should no longer display as "next" — otherwise the checkpoint box
+  // keeps showing an already-cleared requirement until the following day
+  return milestones.find(m => m.day > player.day) || null;
 }
 
 function netWorth() {
@@ -210,6 +367,8 @@ function nudgePrice(stock) {
 const BIG_WIN_THRESHOLD = 5_000;
 
 function advanceDay() {
+  SOUNDS.advanceDay();
+
   const netWorthBefore = netWorth();
 
   player.day += 1;
@@ -256,6 +415,125 @@ function advanceDay() {
   if (netWorthDelta >= BIG_WIN_THRESHOLD) {
     unlockAchievement("bigWin", "BIG WIN!", "A huge net worth gain in one day!");
   }
+
+  checkMilestone();
+}
+
+// ---------- checkpoints (win / game over) ----------
+
+let gameEnded = false;
+
+function disableGameControls(disabled) {
+  document.getElementById("buy-btn").disabled = disabled;
+  document.getElementById("sell-btn").disabled = disabled;
+  document.getElementById("advance-day-btn").disabled = disabled;
+}
+
+// Called after every Advance Day's price update + net worth recalculation.
+// Only ever matches on an exact milestone day (15 or 30 currently).
+function checkMilestone() {
+  const milestone = milestones.find(m => m.day === player.day);
+  if (!milestone) return;
+
+  const currentNetWorth = netWorth();
+  const passed = currentNetWorth >= milestone.requiredNetWorth;
+  const isFinal = milestone.day === config.maxDays;
+
+  if (!passed) {
+    endGame("game-over", milestone, currentNetWorth);
+    return;
+  }
+
+  if (isFinal) {
+    endGame("win", milestone, currentNetWorth);
+  } else {
+    // non-final checkpoint pass: brief, non-blocking banner, game continues
+    queueToast(
+      `${milestone.label.toUpperCase()} CLEARED!`,
+      `Net worth ${formatMoney(currentNetWorth)} — checkpoint passed!`,
+      "green"
+    );
+  }
+}
+
+function buildOverlayAvatar(state) {
+  const container = document.getElementById("overlay-avatar");
+  container.innerHTML = "";
+  container.appendChild(buildPlayerPortrait(state));
+}
+
+function endGame(outcome, milestone, currentNetWorth) {
+  gameEnded = true;
+  disableGameControls(true);
+
+  const box = document.getElementById("overlay-box");
+  box.classList.remove("win", "game-over");
+  box.classList.add(outcome);
+
+  if (outcome === "win") {
+    SOUNDS.win();
+    buildOverlayAvatar("happy");
+    document.getElementById("overlay-title").textContent = milestone.label.toUpperCase();
+    document.getElementById("overlay-message").textContent =
+      `Final net worth: ${formatMoney(currentNetWorth)} on Day ${milestone.day}. You made it!`;
+  } else {
+    SOUNDS.gameOver();
+    buildOverlayAvatar("stressed");
+    document.getElementById("overlay-title").textContent = "GAME OVER";
+    document.getElementById("overlay-message").textContent =
+      `Missed Day ${milestone.day} — ${milestone.label}. Net worth was ` +
+      `${formatMoney(currentNetWorth)}, needed ${formatMoney(milestone.requiredNetWorth)}.`;
+  }
+
+  document.getElementById("overlay").classList.remove("hidden");
+}
+
+// Resets every piece of one-time/session state for a clean second
+// playthrough. Does NOT touch localStorage — no persisted high-score exists
+// yet (that's step 7 polish), and this function should never be the place
+// that would clear one if it did.
+function resetGame() {
+  player.cash = STARTING_CASH;
+  player.day = 1;
+  player.holdings = {};
+  player.costBasis = {};
+
+  for (const stock of stocks) {
+    const startingPrice = STOCK_STARTING_PRICES[stock.id];
+    stock.price = startingPrice;
+    stock.history = [startingPrice];
+    stock.lastChangePercent = null;
+  }
+
+  unlockedAchievements.clear();
+  toastQueue.length = 0;
+  toastActive = false;
+  const toastEl = document.getElementById("achievement-toast");
+  toastEl.classList.add("hidden");
+  toastEl.innerHTML = "";
+
+  currentAvatarState = null;
+  lastPaceState = null;
+  if (avatarFlashTimer) {
+    clearTimeout(avatarFlashTimer);
+    avatarFlashTimer = null;
+  }
+  // clear any floating +$/-$ popup still mid-animation from right before the
+  // reset (they self-remove within ~1.2s normally, but no reason to let a
+  // stale one bleed into the new playthrough)
+  document.querySelectorAll(".floating-delta").forEach(el => el.remove());
+
+  currentHeadline = pickInitialHeadline();
+
+  gameEnded = false;
+  disableGameControls(false);
+  document.getElementById("overlay").classList.add("hidden");
+  document.getElementById("overlay-box").classList.remove("win", "game-over");
+
+  document.getElementById("trade-feedback").textContent = "";
+  document.getElementById("trade-shares-input").value = 1;
+
+  renderAll();
 }
 
 // ---------- trading ----------
@@ -281,6 +559,8 @@ function refreshAfterTrade() {
 }
 
 function buyStock() {
+  if (gameEnded) return;
+
   const stock = getSelectedStock();
   if (!stock) return;
 
@@ -310,11 +590,14 @@ function buyStock() {
 
   setTradeFeedback(`Bought ${shares} share${shares === 1 ? "" : "s"} of ${stock.id.toUpperCase()} for ${formatPrice(cost)}.`);
   showFloatingDelta(-cost);
+  SOUNDS.buy();
   checkCommonTradeAchievements(stock, cost);
   refreshAfterTrade();
 }
 
 function sellStock() {
+  if (gameEnded) return;
+
   const stock = getSelectedStock();
   if (!stock) return;
 
@@ -338,6 +621,7 @@ function sellStock() {
 
   setTradeFeedback(`Sold ${shares} share${shares === 1 ? "" : "s"} of ${stock.id.toUpperCase()} for ${formatPrice(proceeds)}.`);
   showFloatingDelta(proceeds);
+  SOUNDS.sell();
 
   if (stock.price > avgCost) {
     unlockAchievement("profitTaker", "PROFIT TAKER!", "Sold for more than you paid!");
@@ -367,7 +651,6 @@ function renderDashboard() {
     : "ALL CLEARED";
 
   const currentNetWorth = netWorth();
-  const pace = expectedPace(player.day);
   const avatarState = getAvatarStateForNetWorth(player.day, currentNetWorth);
 
   if (lastPaceState === "stressed" && (avatarState === "neutral" || avatarState === "happy")) {
@@ -376,10 +659,6 @@ function renderDashboard() {
   lastPaceState = avatarState;
 
   setAvatarState(avatarState);
-
-  // TEMP DEBUG — remove once avatar-reactivity issue is confirmed fixed
-  document.getElementById("debug-line").textContent =
-    `STATE: ${avatarState} | PACE: ${formatMoney(pace)} | NET WORTH: ${formatMoney(currentNetWorth)}`;
 }
 
 function renderStockTable() {
@@ -399,11 +678,24 @@ function renderStockTable() {
     const flashClass = isUp ? "flash-up" : isDown ? "flash-down" : "";
     const changeText = hasChange ? `${change > 0 ? "+" : ""}${change.toFixed(2)}%` : "—";
 
+    // Gain/loss vs. the player's own average cost basis (player.costBasis —
+    // the same tracking already built for the Profit Taker achievement, not
+    // a new system). Only meaningful while a position is actually held.
+    const avgCost = player.costBasis[stock.id] || 0;
+    const hasPosition = shares > 0;
+    const gainLossDollar = hasPosition ? (stock.price - avgCost) * shares : 0;
+    const gainLossPct = hasPosition && avgCost > 0 ? ((stock.price - avgCost) / avgCost) * 100 : 0;
+    const gainLossClass = !hasPosition ? "neutral" : gainLossDollar > 0 ? "positive" : gainLossDollar < 0 ? "negative" : "neutral";
+    const gainLossText = hasPosition
+      ? `${gainLossDollar >= 0 ? "+" : "-"}${formatMoney(Math.abs(gainLossDollar))} (${gainLossPct >= 0 ? "+" : "-"}${Math.abs(gainLossPct).toFixed(1)}%)`
+      : "—";
+
     tr.innerHTML = `
       <td class="stock-ticker">${stock.id.toUpperCase()}</td>
       <td class="stock-company">${stock.name}<button type="button" class="info-icon" data-info-id="${stock.id}" aria-label="About ${stock.name}">&#9432;</button></td>
       <td class="stock-price ${flashClass}" data-stock-id="${stock.id}">${formatPrice(stock.price)}</td>
       <td class="stock-change ${changeClass} ${flashClass}" data-change-id="${stock.id}">${changeText}</td>
+      <td class="stock-gain-loss ${gainLossClass}">${gainLossText}</td>
       <td>${shares}</td>
     `;
     tbody.appendChild(tr);
@@ -669,6 +961,17 @@ function openStockInfo(stockId) {
   document.getElementById("stock-info-name").textContent = stock.name;
   document.getElementById("stock-info-meta").textContent = `${stock.id.toUpperCase()} · ${stock.sector}`;
   document.getElementById("stock-info-description").textContent = stock.description;
+
+  const shares = player.holdings[stock.id] || 0;
+  const avgCostEl = document.getElementById("stock-info-avg-cost");
+  if (shares > 0) {
+    const avgCost = player.costBasis[stock.id] || 0;
+    avgCostEl.textContent = `You own ${shares} share${shares === 1 ? "" : "s"} — avg. cost ${formatPrice(avgCost)}/share`;
+    avgCostEl.classList.remove("hidden");
+  } else {
+    avgCostEl.classList.add("hidden");
+  }
+
   document.getElementById("stock-info-modal").classList.remove("hidden");
 }
 
@@ -677,6 +980,8 @@ function closeStockInfo() {
 }
 
 // ---------- event wiring ----------
+
+document.getElementById("sound-toggle-btn").addEventListener("click", toggleSoundMuted);
 
 document.getElementById("buy-btn").addEventListener("click", buyStock);
 document.getElementById("sell-btn").addEventListener("click", sellStock);
@@ -696,15 +1001,17 @@ document.getElementById("stock-info-modal").addEventListener("click", (event) =>
 });
 
 document.getElementById("advance-day-btn").addEventListener("click", () => {
-  // milestone/win/loss checks land in a later step — for now just stop
-  // incrementing once the game's day count is exhausted
+  if (gameEnded) return;
+  // superseded by the win/game-over freeze once a milestone resolves, but
+  // kept as a harmless extra guard against the day counter reading "31/30"
   if (player.day >= config.maxDays) return;
   advanceDay();
 });
 
-document.getElementById("overlay-btn").addEventListener("click", () => {
-  document.getElementById("overlay").classList.add("hidden");
-});
+// #overlay-btn belongs only to the win/game-over screen (the stock-info
+// modal has its own separate #stock-info-close button/handler) — so this is
+// always "Play Again."
+document.getElementById("overlay-btn").addEventListener("click", resetGame);
 
 const sharesInput = document.getElementById("trade-shares-input");
 

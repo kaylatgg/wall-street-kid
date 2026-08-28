@@ -14,6 +14,7 @@
 <div class="crt-frame">
 
   <header class="title-bar">
+    <button type="button" id="sound-toggle-btn" class="sound-toggle-btn" aria-label="Toggle sound">🔊</button>
     <h1>WALL STREET KID</h1>
     <p class="subtitle">— A Fortune Awaits —</p>
   </header>
@@ -57,6 +58,7 @@
               <th>COMPANY</th>
               <th>PRICE</th>
               <th>CHANGE</th>
+              <th>GAIN/LOSS</th>
               <th>SHARES OWNED</th>
             </tr>
           </thead>
@@ -90,9 +92,6 @@
           <p class="trade-feedback" id="trade-feedback">&nbsp;</p>
         </div>
 
-        <!-- TEMP DEBUG — remove once avatar-reactivity issue is confirmed fixed -->
-        <p id="debug-line" class="debug-line"></p>
-
         <div class="advance-day-wrap">
           <button id="advance-day-btn" class="btn btn-advance">ADVANCE DAY ▶</button>
 
@@ -122,16 +121,20 @@
     <h2 id="stock-info-name">COMPANY NAME</h2>
     <p id="stock-info-meta" class="stock-info-meta"></p>
     <p id="stock-info-description"></p>
+    <p id="stock-info-avg-cost" class="stock-info-meta hidden"></p>
     <button id="stock-info-close" class="btn">CLOSE</button>
   </div>
 </div>
 
-<!-- Milestone / game-over / win overlays (hidden for now, wired up in step 5) -->
+<!-- Win / game-over screen — full blocking overlay, highest z-index of
+     anything in the page (see .overlay's z-index and this DOM position,
+     after stock-info-modal, so it always wins any stacking tie). -->
 <div id="overlay" class="overlay hidden">
-  <div class="overlay-box">
+  <div class="overlay-box" id="overlay-box">
+    <div class="overlay-avatar" id="overlay-avatar"></div>
     <h2 id="overlay-title">CHECKPOINT</h2>
     <p id="overlay-message"></p>
-    <button id="overlay-btn" class="btn">CONTINUE</button>
+    <button id="overlay-btn" class="btn">PLAY AGAIN</button>
   </div>
 </div>
 
