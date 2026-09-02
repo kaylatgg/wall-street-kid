@@ -121,10 +121,10 @@
 <!-- One-time celebration toasts (achievements) — fixed, does not affect layout.
      Content is built fresh into here each time by app.js so the pop-in
      animation always replays. -->
-<div id="achievement-toast" class="achievement-toast hidden"></div>
+<div id="achievement-toast" class="achievement-toast hidden js-modal-blocker"></div>
 
 <!-- Company info popup — click a stock's info icon in the Stock Exchange table -->
-<div id="stock-info-modal" class="overlay hidden">
+<div id="stock-info-modal" class="overlay hidden js-modal-blocker">
   <div class="overlay-box">
     <h2 id="stock-info-name">COMPANY NAME</h2>
     <p id="stock-info-meta" class="stock-info-meta"></p>
@@ -137,11 +137,13 @@
 <!-- Win / game-over screen — full blocking overlay, highest z-index of
      anything in the page (see .overlay's z-index and this DOM position,
      after stock-info-modal, so it always wins any stacking tie). -->
-<div id="overlay" class="overlay hidden">
+<div id="overlay" class="overlay hidden js-modal-blocker">
+  <canvas id="confetti-canvas" class="confetti-canvas hidden"></canvas>
   <div class="overlay-box" id="overlay-box">
     <div class="overlay-avatar" id="overlay-avatar"></div>
     <h2 id="overlay-title">CHECKPOINT</h2>
     <p id="overlay-message"></p>
+    <div class="overlay-report-card" id="overlay-report-card"></div>
     <button id="overlay-btn" class="btn">PLAY AGAIN</button>
   </div>
 </div>

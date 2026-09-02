@@ -149,6 +149,11 @@ let currentHeadline = pickInitialHeadline();
 // checkpoint-pass banners aren't tracked there since checkMilestone only
 // ever evaluates a given milestone day once per playthrough anyway.
 
+// ---------- report-card tracking (v2) ----------
+// Fed by existing trade/render flow, read only at endGame() time.
+let completedTrades = []; // { stockId, profit } — one entry per sellStock() call
+let moodDays = { happy: 0, neutral: 0, stressed: 0 }; // pace-based mood, one tick per Advance Day
+
 const unlockedAchievements = new Set();
 const toastQueue = [];
 let toastActive = false;
@@ -435,6 +440,9 @@ function advanceDay() {
 
   const netWorthAfter = netWorth();
 
+  const paceStateToday = getAvatarStateForNetWorth(player.day, netWorthAfter);
+  moodDays[paceStateToday] = (moodDays[paceStateToday] || 0) + 1;
+
   renderAll();
 
   // Separate, additional reaction layer on top of the pace-based mood
@@ -493,6 +501,101 @@ function checkMilestone() {
   }
 }
 
+// ---------- end-of-game report card (v2) ----------
+// Reads state already tracked elsewhere (completedTrades, moodDays,
+// player.holdings) — no new gameplay logic, display only.
+function renderReportCard() {
+  const card = document.getElementById("overlay-report-card");
+
+  let best = null, worst = null;
+  for (const t of completedTrades) {
+    if (!best || t.profit > best.profit) best = t;
+    if (!worst || t.profit < worst.profit) worst = t;
+  }
+
+  let mostHeld = null;
+  for (const stock of stocks) {
+    const shares = player.holdings[stock.id] || 0;
+    if (shares > 0 && (!mostHeld || shares > mostHeld.shares)) mostHeld = { id: stock.id, shares };
+  }
+
+  const tradeLine = (label, trade) => {
+    if (!trade) return `<div class="report-line">${label}: <strong>—</strong></div>`;
+    const cls = trade.profit >= 0 ? "positive" : "negative";
+    const sign = trade.profit >= 0 ? "+" : "-";
+    return `<div class="report-line">${label}: <strong>${trade.stockId.toUpperCase()}</strong> <span class="${cls}">${sign}${formatMoney(Math.abs(trade.profit))}</span></div>`;
+  };
+
+  const totalMoodDays = moodDays.happy + moodDays.neutral + moodDays.stressed;
+  const moodLine = totalMoodDays === 0
+    ? `<div class="report-line">MOOD: <strong>—</strong></div>`
+    : `<div class="report-line">MOOD: <strong>${moodDays.happy} happy · ${moodDays.neutral} neutral · ${moodDays.stressed} stressed</strong></div>`;
+
+  card.innerHTML = `
+    ${tradeLine("BEST TRADE", best)}
+    ${tradeLine("WORST TRADE", worst)}
+    <div class="report-line">MOST HELD: <strong>${mostHeld ? `${mostHeld.id.toUpperCase()} (${mostHeld.shares} shares)` : "—"}</strong></div>
+    ${moodLine}
+  `;
+}
+
+// ---------- confetti (v2, win screen only) ----------
+// Drawn on a canvas that sits earlier in #overlay's DOM than .overlay-box —
+// see .confetti-canvas — so the opaque card always paints over it and the
+// burst never covers the win text/button.
+const CONFETTI_COLORS = ["#ffd23f", "#00e756", "#4477ee", "#ff6688", "#f5f5f5"];
+let confettiRafId = null;
+
+function launchConfetti() {
+  const canvas = document.getElementById("confetti-canvas");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.classList.remove("hidden");
+  const ctx = canvas.getContext("2d");
+
+  const particles = Array.from({ length: 70 }, () => ({
+    x: Math.random() * canvas.width,
+    y: -20 - Math.random() * canvas.height * 0.5,
+    vx: (Math.random() - 0.5) * 2,
+    vy: 2 + Math.random() * 3,
+    size: 3 + Math.random() * 4,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    rotation: Math.random() * Math.PI,
+    rotationSpeed: (Math.random() - 0.5) * 0.2,
+  }));
+
+  const startTime = performance.now();
+  const DURATION_MS = 2200;
+
+  function frame(now) {
+    const elapsed = now - startTime;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (elapsed > DURATION_MS) {
+      canvas.classList.add("hidden");
+      confettiRafId = null;
+      return;
+    }
+
+    for (const p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rotation += p.rotationSpeed;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+      ctx.restore();
+    }
+
+    confettiRafId = requestAnimationFrame(frame);
+  }
+
+  if (confettiRafId) cancelAnimationFrame(confettiRafId);
+  confettiRafId = requestAnimationFrame(frame);
+}
+
 function buildOverlayAvatar(state) {
   const container = document.getElementById("overlay-avatar");
   container.innerHTML = "";
@@ -522,7 +625,12 @@ function endGame(outcome, milestone, currentNetWorth) {
       `${formatMoney(currentNetWorth)}, needed ${formatMoney(milestone.requiredNetWorth)}.`;
   }
 
+  renderReportCard();
   document.getElementById("overlay").classList.remove("hidden");
+
+  if (outcome === "win") {
+    launchConfetti();
+  }
 }
 
 // Resets every piece of one-time/session state for a clean second
@@ -561,6 +669,14 @@ function resetGame() {
   document.querySelectorAll(".floating-delta").forEach(el => el.remove());
 
   currentHeadline = pickInitialHeadline();
+
+  completedTrades = [];
+  moodDays = { happy: 0, neutral: 0, stressed: 0 };
+  if (confettiRafId) {
+    cancelAnimationFrame(confettiRafId);
+    confettiRafId = null;
+  }
+  document.getElementById("confetti-canvas").classList.add("hidden");
 
   gameEnded = false;
   disableGameControls(false);
@@ -655,6 +771,7 @@ function sellStock() {
 
   player.cash += proceeds;
   player.holdings[stock.id] = owned - shares;
+  completedTrades.push({ stockId: stock.id, profit: proceeds - avgCost * shares });
 
   setTradeFeedback(`Sold ${shares} share${shares === 1 ? "" : "s"} of ${stock.id.toUpperCase()} for ${formatPrice(proceeds)}.`);
   showFloatingDelta(proceeds);
@@ -1164,5 +1281,48 @@ document.getElementById("shares-increment").addEventListener("click", () => {
 });
 
 document.getElementById("trade-stock-select").addEventListener("change", syncSelectedStockRow);
+
+// ---------- keyboard shortcuts (v2) ----------
+// Generic guard: any element carrying .js-modal-blocker that's currently
+// visible blocks shortcuts — new overlays/toasts opt in by adding the class
+// (see stock-info-modal, achievement-toast, overlay above, plus the v2
+// market-event banner / Broker's Choice modal / tutorial overlay), so this
+// never needs a hardcoded list of "the three modals that exist today."
+function isAnyModalOpen() {
+  return Array.from(document.querySelectorAll(".js-modal-blocker"))
+    .some(el => !el.classList.contains("hidden"));
+}
+
+document.addEventListener("keydown", (event) => {
+  if (gameEnded || isAnyModalOpen()) return;
+
+  const sharesInput = document.getElementById("trade-shares-input");
+  const active = document.activeElement;
+
+  if (/^[1-8]$/.test(event.key) && active !== sharesInput) {
+    const stock = stocks[parseInt(event.key, 10) - 1];
+    if (stock) {
+      document.getElementById("trade-stock-select").value = stock.id;
+      syncSelectedStockRow();
+    }
+    event.preventDefault();
+    return;
+  }
+
+  // number input already steps natively on Up/Down when it itself has
+  // focus — only handle the keys ourselves when focus is elsewhere, so a
+  // press never double-increments
+  if ((event.key === "ArrowUp" || event.key === "ArrowDown") && active !== sharesInput) {
+    const current = parseInt(sharesInput.value, 10) || 1;
+    sharesInput.value = event.key === "ArrowUp" ? current + 1 : Math.max(1, current - 1);
+    event.preventDefault();
+    return;
+  }
+
+  if (event.key === "Enter") {
+    buyStock();
+    event.preventDefault();
+  }
+});
 
 renderAll();

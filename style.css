@@ -848,6 +848,35 @@ html, body {
   width: 100%;
 }
 
+/* confetti sits earlier in the DOM than .overlay-box, so with no z-index on
+   either, the opaque overlay-box naturally paints over it in the center —
+   the burst reads as happening around/behind the card, never blocking its
+   text or the Play Again button */
+.confetti-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.overlay-report-card {
+  text-align: left;
+  border: 2px solid var(--nes-border);
+  background: var(--nes-black);
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--nes-gray);
+}
+
+.overlay-report-card .report-line strong {
+  color: var(--nes-white);
+  font-weight: normal;
+}
+
+.overlay-report-card .report-line .positive { color: var(--nes-green); }
+.overlay-report-card .report-line .negative { color: var(--nes-red); }
+
 /* win / game-over variants — visually distinct from each other and from the
    neutral-bordered stock-info modal that reuses the same base classes */
 .overlay-avatar {
