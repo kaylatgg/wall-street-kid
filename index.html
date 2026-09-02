@@ -123,6 +123,12 @@
      animation always replays. -->
 <div id="achievement-toast" class="achievement-toast hidden js-modal-blocker"></div>
 
+<!-- Market-wide event cue (Crash Day / Boom Day) — same fixed, non-blocking
+     toast mechanics as achievements, rendered into its own element so it can
+     appear on the same Advance Day as an achievement without fighting over
+     the shared queue. -->
+<div id="market-event-banner" class="achievement-toast market-event-banner hidden js-modal-blocker"></div>
+
 <!-- Company info popup — click a stock's info icon in the Stock Exchange table -->
 <div id="stock-info-modal" class="overlay hidden js-modal-blocker">
   <div class="overlay-box">
@@ -131,6 +137,21 @@
     <p id="stock-info-description"></p>
     <p id="stock-info-avg-cost" class="stock-info-meta hidden"></p>
     <button id="stock-info-close" class="btn">CLOSE</button>
+  </div>
+</div>
+
+<!-- Broker's Choice event — a quick 2-3 option pop-up that pauses the game
+     like any other modal, offered every several days (never on a day that
+     already had a market-wide event — see the collision rule in app.js). -->
+<div id="brokers-choice-modal" class="overlay hidden js-modal-blocker">
+  <div class="overlay-box" id="brokers-choice-box">
+    <h2>BROKER'S CHOICE</h2>
+    <p id="brokers-choice-text"></p>
+    <div class="brokers-choice-buttons">
+      <button id="brokers-choice-pay" class="btn">PAY FOR THE TIP</button>
+      <button id="brokers-choice-hold" class="btn">HOLD</button>
+      <button id="brokers-choice-ignore" class="btn">IGNORE</button>
+    </div>
   </div>
 </div>
 
@@ -147,6 +168,24 @@
     <button id="overlay-btn" class="btn">PLAY AGAIN</button>
   </div>
 </div>
+
+<!-- First-time-user onboarding tour: a dimmed overlay with a spotlight cutout
+     around one real UI element per step, plus a fixed caption panel. Freezes
+     underlying interaction while open (disableGameControls + js-modal-blocker
+     for the keyboard-shortcut guard). Auto-plays once per browser via a
+     localStorage flag set on dismiss; the "?" button replays it anytime
+     without touching that flag. -->
+<div id="tutorial-overlay" class="tutorial-overlay hidden js-modal-blocker">
+  <div class="tutorial-spotlight" id="tutorial-spotlight"></div>
+  <div class="tutorial-caption" id="tutorial-caption">
+    <p id="tutorial-text"></p>
+    <div class="tutorial-controls">
+      <button id="tutorial-skip" class="btn tutorial-skip-btn">SKIP TUTORIAL</button>
+      <button id="tutorial-next" class="btn">NEXT</button>
+    </div>
+  </div>
+</div>
+<button id="tutorial-replay-btn" class="tutorial-replay-btn" aria-label="Replay tutorial" title="Replay tutorial">?</button>
 
 <script src="app.js"></script>
 </body>

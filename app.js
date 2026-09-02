@@ -300,6 +300,18 @@ const SOUNDS = {
     { freq: NOTE.E5, duration: 0.16, type: "sawtooth", peakGain: 0.12 },
     { freq: NOTE.C5, duration: 0.35, type: "sawtooth", peakGain: 0.12 },
   ]),
+  crash: () => playSequence([
+    { freq: NOTE.G5, duration: 0.1, type: "sawtooth", peakGain: 0.14 },
+    { freq: NOTE.E5, duration: 0.1, type: "sawtooth", peakGain: 0.14 },
+    { freq: NOTE.C5, duration: 0.1, type: "sawtooth", peakGain: 0.14 },
+    { freq: 196, duration: 0.3, type: "sawtooth", peakGain: 0.15 },
+  ]),
+  boom: () => playSequence([
+    { freq: NOTE.C5, duration: 0.09, type: "square", peakGain: 0.13 },
+    { freq: NOTE.G5, duration: 0.09, type: "square", peakGain: 0.13 },
+    { freq: NOTE.C6, duration: 0.09, type: "square", peakGain: 0.14 },
+    { freq: NOTE.E6, duration: 0.25, type: "square", peakGain: 0.15 },
+  ]),
 };
 
 function toggleSoundMuted() {
@@ -408,6 +420,115 @@ function nudgePrice(stock) {
 // day is a meaningfully large, but reachable, single-day gain.
 const BIG_WIN_THRESHOLD = 5_000;
 
+// ---------- market-wide events (v2) ----------
+// DELIBERATE: this feature (and everything built after it) is going in
+// without a preceding commit checkpoint — see the Part 2 assignment's
+// "break it and recover it" exercise. Not an oversight.
+// Initial tuning (1/11 chance, 8-15% magnitude, per the spec's own
+// guideline) was simulated post-build the same way DAILY_DRIFT originally
+// was — 10,000-run diversify-and-hold batches — and it hit the win rate
+// much harder than expected: 99.7% (no market events) -> 65.3%. A single
+// large market-wide swing landing near the day-15 checkpoint is punishing
+// against a binary pass/fail gate, more so than an equivalent amount of
+// ordinary per-stock volatility ever is. Magnitude mattered far more than
+// frequency for restoring winnability (cutting frequency alone to 1/25-1/30
+// at the original 8-15% magnitude still only recovered to ~77-80%), so this
+// final tuning leans on magnitude: 1/16 chance, 3-7% swing -> 96.7% / 91.2%.
+const MARKET_EVENT_CHANCE = 1 / 16;
+const MARKET_EVENT_MIN_MAGNITUDE = 0.03;
+const MARKET_EVENT_MAX_MAGNITUDE = 0.07;
+
+function rollMarketEvent(day) {
+  if (day <= 1) return null; // nothing to react to on the very first day
+  if (Math.random() >= MARKET_EVENT_CHANCE) return null;
+  const isBoom = Math.random() < 0.5;
+  const magnitude = MARKET_EVENT_MIN_MAGNITUDE + Math.random() * (MARKET_EVENT_MAX_MAGNITUDE - MARKET_EVENT_MIN_MAGNITUDE);
+  return { type: isBoom ? "boom" : "crash", magnitude: isBoom ? magnitude : -magnitude };
+}
+
+// Own element (not the shared achievement queue) so a market event and an
+// achievement landing on the same Advance Day both show at once instead of
+// one waiting behind the other.
+function showMarketEventBanner(marketEvent) {
+  const isBoom = marketEvent.type === "boom";
+  const pct = Math.abs(Math.round(marketEvent.magnitude * 100));
+  const title = isBoom ? "BOOM DAY!" : "CRASH DAY!";
+  const message = isBoom
+    ? `The whole market surges — every stock jumps about ${pct}%!`
+    : `The whole market plunges — every stock drops about ${pct}%!`;
+
+  if (isBoom) SOUNDS.boom(); else SOUNDS.crash();
+
+  const container = document.getElementById("market-event-banner");
+  container.innerHTML = `
+    <div class="achievement-toast-box toast-${isBoom ? "green" : "red"}">
+      <div class="achievement-toast-title">${title}</div>
+      <div class="achievement-toast-message">${message}</div>
+    </div>
+  `;
+  container.classList.remove("hidden");
+  setTimeout(() => {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+  }, TOAST_DURATION_MS);
+
+  const overlayFx = document.querySelector(".crt-overlay");
+  const flashClass = isBoom ? "market-flash-boom" : "market-flash-crash";
+  overlayFx.classList.remove("market-flash-boom", "market-flash-crash");
+  void overlayFx.offsetWidth; // force reflow so back-to-back flashes replay
+  overlayFx.classList.add(flashClass);
+}
+
+// ---------- Broker's Choice (v2) ----------
+const BROKERS_CHOICE_CHANCE = 1 / 6; // roughly once every 6 days advanced
+const BROKERS_CHOICE_FEE = 3000;
+
+// COLLISION RULE: only ever called when the current day did NOT already
+// have a market-wide event — see advanceDay() — so a player never sees two
+// competing pop-ups from one Advance Day click.
+function maybeTriggerBrokersChoice() {
+  if (player.day <= 1) return;
+  if (Math.random() >= BROKERS_CHOICE_CHANCE) return;
+  openBrokersChoice();
+}
+
+function openBrokersChoice() {
+  document.getElementById("brokers-choice-text").textContent =
+    `Your broker leans in: "I've got an early tip on tomorrow's move — ${formatMoney(BROKERS_CHOICE_FEE)} and it's yours. No guarantees."`;
+  document.getElementById("brokers-choice-pay").disabled = player.cash < BROKERS_CHOICE_FEE;
+  disableGameControls(true);
+  document.getElementById("brokers-choice-modal").classList.remove("hidden");
+}
+
+function closeBrokersChoice() {
+  document.getElementById("brokers-choice-modal").classList.add("hidden");
+  if (!gameEnded) disableGameControls(false);
+}
+
+function resolveBrokersChoicePay() {
+  player.cash -= BROKERS_CHOICE_FEE;
+  const paidOff = Math.random() < 0.6;
+  if (paidOff) {
+    const payout = 3000 + Math.random() * 5000;
+    player.cash += payout;
+    setTradeFeedback(`The tip paid off — netted you ${formatMoney(payout - BROKERS_CHOICE_FEE)}.`);
+  } else {
+    setTradeFeedback(`The tip was bad. You're out ${formatMoney(BROKERS_CHOICE_FEE)}.`);
+  }
+  refreshAfterTrade();
+  closeBrokersChoice();
+}
+
+function resolveBrokersChoiceHold() {
+  setTradeFeedback("You held onto your cash and waited it out.");
+  closeBrokersChoice();
+}
+
+function resolveBrokersChoiceIgnore() {
+  setTradeFeedback("You brushed off the offer.");
+  closeBrokersChoice();
+}
+
 function advanceDay() {
   SOUNDS.advanceDay();
 
@@ -418,6 +539,7 @@ function advanceDay() {
   // the headline on screen right now predicts THIS move, not the next one —
   // capture it before picking tomorrow's headline
   const activeHeadline = currentHeadline;
+  const marketEvent = rollMarketEvent(player.day);
 
   for (const stock of stocks) {
     const previousPrice = stock.price;
@@ -429,6 +551,12 @@ function advanceDay() {
       (activeHeadline.sector === null || activeHeadline.sector === stock.sector);
     if (headlineApplies) {
       newPrice = Math.max(0.5, Math.round(newPrice * (1 + activeHeadline.effect) * 100) / 100);
+    }
+
+    // market-wide event, if one rolled, hits every stock the same direction
+    // on top of its normal drift/volatility and any headline effect
+    if (marketEvent) {
+      newPrice = Math.max(0.5, Math.round(newPrice * (1 + marketEvent.magnitude) * 100) / 100);
     }
 
     stock.price = newPrice;
@@ -444,6 +572,10 @@ function advanceDay() {
   moodDays[paceStateToday] = (moodDays[paceStateToday] || 0) + 1;
 
   renderAll();
+
+  if (marketEvent) {
+    showMarketEventBanner(marketEvent);
+  }
 
   // Separate, additional reaction layer on top of the pace-based mood
   // (getAvatarStateForNetWorth): fires on EVERY Advance Day based on that
@@ -462,6 +594,17 @@ function advanceDay() {
   }
 
   checkMilestone();
+
+  if (!gameEnded) {
+    if (marketEvent && marketEvent.type === "crash") {
+      unlockAchievement("survivedCrash", "SURVIVED THE CRASH!", "The market crashed and you're still standing.");
+    }
+    // COLLISION RULE: Broker's Choice only ever rolls on a day that did NOT
+    // already have a market-wide event — see maybeTriggerBrokersChoice.
+    if (!marketEvent) {
+      maybeTriggerBrokersChoice();
+    }
+  }
 }
 
 // ---------- checkpoints (win / game over) ----------
@@ -682,6 +825,10 @@ function resetGame() {
   disableGameControls(false);
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("overlay-box").classList.remove("win", "game-over");
+  document.getElementById("brokers-choice-modal").classList.add("hidden");
+  document.getElementById("market-event-banner").classList.add("hidden");
+  document.getElementById("market-event-banner").innerHTML = "";
+  document.querySelector(".crt-overlay").classList.remove("market-flash-boom", "market-flash-crash");
 
   document.getElementById("trade-feedback").textContent = "";
   document.getElementById("trade-shares-input").value = 1;
@@ -1268,6 +1415,10 @@ document.getElementById("advance-day-btn").addEventListener("click", () => {
 // always "Play Again."
 document.getElementById("overlay-btn").addEventListener("click", resetGame);
 
+document.getElementById("brokers-choice-pay").addEventListener("click", resolveBrokersChoicePay);
+document.getElementById("brokers-choice-hold").addEventListener("click", resolveBrokersChoiceHold);
+document.getElementById("brokers-choice-ignore").addEventListener("click", resolveBrokersChoiceIgnore);
+
 const sharesInput = document.getElementById("trade-shares-input");
 
 document.getElementById("shares-decrement").addEventListener("click", () => {
@@ -1294,6 +1445,16 @@ function isAnyModalOpen() {
 }
 
 document.addEventListener("keydown", (event) => {
+  // checked ahead of the generic modal guard below (and scoped to only fire
+  // while the tutorial itself is the open overlay) — the tutorial marks
+  // itself .js-modal-blocker like every other overlay, so the general
+  // isAnyModalOpen() early return would otherwise block Escape from ever
+  // reaching the one modal it's meant to dismiss
+  if (event.key === "Escape" && !document.getElementById("tutorial-overlay").classList.contains("hidden")) {
+    closeTutorial(true);
+    return;
+  }
+
   if (gameEnded || isAnyModalOpen()) return;
 
   const sharesInput = document.getElementById("trade-shares-input");
@@ -1325,4 +1486,85 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// ---------- onboarding tutorial (v2) ----------
+const TUTORIAL_SEEN_KEY = "wsk_tutorial_seen";
+let tutorialStep = 0;
+
+const TUTORIAL_STEPS = [
+  { target: null, text: `Welcome to Wall Street Kid! You start with ${formatMoney(STARTING_CASH)} and ${config.maxDays} days to grow it to ${formatMoney(milestones[milestones.length - 1].requiredNetWorth)}.` },
+  { target: ".stock-panel", text: "This is the Stock Exchange. A share is a tiny piece of a company — prices move every day." },
+  { target: ".news-ticker", text: "Market news gives you a lean on what's coming next — a hint, not a guarantee." },
+  { target: ".trade-panel", text: "Pick a stock, choose your shares, then Buy. Selling locks in a gain or a loss." },
+  { target: ".advance-day-wrap", text: "Advance Day moves time forward and updates prices. Net worth is what gets judged at each checkpoint." },
+  { target: null, text: "You're ready. Let's trade!" },
+];
+
+function positionTutorialSpotlight(target) {
+  const spotlight = document.getElementById("tutorial-spotlight");
+  if (!target) {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    spotlight.style.left = `${cx}px`;
+    spotlight.style.top = `${cy}px`;
+    spotlight.style.width = "0px";
+    spotlight.style.height = "0px";
+    spotlight.style.borderColor = "transparent";
+    return;
+  }
+  const el = document.querySelector(target);
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const pad = 6;
+  spotlight.style.left = `${rect.left - pad}px`;
+  spotlight.style.top = `${rect.top - pad}px`;
+  spotlight.style.width = `${rect.width + pad * 2}px`;
+  spotlight.style.height = `${rect.height + pad * 2}px`;
+  spotlight.style.borderColor = "var(--nes-gold)";
+}
+
+function renderTutorialStep() {
+  const step = TUTORIAL_STEPS[tutorialStep];
+  document.getElementById("tutorial-text").textContent = step.text;
+  positionTutorialSpotlight(step.target);
+  const isLast = tutorialStep === TUTORIAL_STEPS.length - 1;
+  document.getElementById("tutorial-next").textContent = isLast ? "LET'S TRADE!" : "NEXT";
+}
+
+function openTutorial() {
+  tutorialStep = 0;
+  disableGameControls(true);
+  document.getElementById("tutorial-overlay").classList.remove("hidden");
+  renderTutorialStep();
+}
+
+function closeTutorial(markSeen) {
+  document.getElementById("tutorial-overlay").classList.add("hidden");
+  if (markSeen) {
+    try { localStorage.setItem(TUTORIAL_SEEN_KEY, "1"); } catch (e) { /* storage unavailable — fine to skip persisting */ }
+  }
+  if (!gameEnded) disableGameControls(false);
+}
+
+document.getElementById("tutorial-next").addEventListener("click", () => {
+  if (tutorialStep === TUTORIAL_STEPS.length - 1) {
+    closeTutorial(true);
+    return;
+  }
+  tutorialStep += 1;
+  renderTutorialStep();
+});
+
+document.getElementById("tutorial-skip").addEventListener("click", () => closeTutorial(true));
+
+document.getElementById("tutorial-replay-btn").addEventListener("click", () => openTutorial());
+
+window.addEventListener("resize", () => {
+  const overlay = document.getElementById("tutorial-overlay");
+  if (!overlay.classList.contains("hidden")) positionTutorialSpotlight(TUTORIAL_STEPS[tutorialStep].target);
+});
+
 renderAll();
+
+try {
+  if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) openTutorial();
+} catch (e) { /* storage unavailable — just skip the auto-play, replay button still works */ }

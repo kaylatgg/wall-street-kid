@@ -139,6 +139,39 @@ html, body {
   color: var(--nes-green);
 }
 
+/* Crash Day banner — the one red toast variant, reusing the same box shape
+   as achievements/checkpoints but in the "negative" chrome color */
+.achievement-toast-box.toast-red {
+  border-color: var(--nes-red);
+  box-shadow: 0 0 0 4px var(--nes-black), 0 0 16px 2px rgba(255, 51, 85, 0.5), 6px 6px 0 var(--nes-black);
+}
+
+.achievement-toast-box.toast-red .achievement-toast-title {
+  color: var(--nes-red);
+}
+
+/* offset below the achievement toast's slot so a market event and an
+   achievement landing on the same Advance Day never overlap */
+.market-event-banner {
+  top: 92px;
+}
+
+/* ---------- Market-wide event screen flash ---------- */
+/* Brief full-frame tint layered over the CRT overlay — a screen-wide cue
+   distinct from the toast text, auto-removed after one play. */
+@keyframes marketFlashCrash {
+  0%   { box-shadow: inset 0 0 0 6px var(--nes-red), inset 0 0 120px 40px rgba(255, 51, 85, 0.35); }
+  100% { box-shadow: inset 0 0 0 6px transparent, inset 0 0 120px 40px rgba(255, 51, 85, 0); }
+}
+
+@keyframes marketFlashBoom {
+  0%   { box-shadow: inset 0 0 0 6px var(--nes-green), inset 0 0 120px 40px rgba(0, 231, 86, 0.35); }
+  100% { box-shadow: inset 0 0 0 6px transparent, inset 0 0 120px 40px rgba(0, 231, 86, 0); }
+}
+
+.crt-overlay.market-flash-crash { animation: marketFlashCrash 0.9s ease-out; }
+.crt-overlay.market-flash-boom  { animation: marketFlashBoom 0.9s ease-out; }
+
 /* ---------- Title bar ---------- */
 
 .title-bar {
@@ -838,6 +871,13 @@ html, body {
   margin-bottom: 20px;
 }
 
+.brokers-choice-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .stock-info-meta {
   color: var(--nes-gold);
   letter-spacing: 1px;
@@ -901,6 +941,85 @@ html, body {
 
 .overlay-box.game-over h2 {
   color: var(--nes-red);
+}
+
+/* ---------- Onboarding tutorial ---------- */
+/* Highest z-index in the page — it can appear over any other overlay,
+   including the win/game-over screen if replayed. The spotlight is the
+   classic "giant box-shadow" cutout trick: a box positioned over the target
+   element with no fill of its own but a box-shadow spreading 9999px in every
+   direction, which dims the whole viewport EXCEPT the box's own rectangle. A
+   0x0 box (no target — the welcome/closing steps) collapses that to "dim
+   everything." */
+
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: transparent;
+}
+
+.tutorial-spotlight {
+  position: fixed;
+  border: 3px solid var(--nes-gold);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.78);
+  pointer-events: none;
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
+.tutorial-caption {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 40px));
+  border: 4px solid var(--nes-gold);
+  background: var(--nes-navy);
+  padding: 18px 20px;
+  box-shadow: 0 0 0 4px var(--nes-black), 0 0 24px 4px rgba(255, 210, 63, 0.4), 8px 8px 0 var(--nes-black);
+}
+
+.tutorial-caption p {
+  margin: 0 0 16px;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--nes-white);
+}
+
+.tutorial-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.tutorial-skip-btn {
+  background: var(--nes-black);
+  flex: 0 0 auto;
+}
+
+.tutorial-replay-btn {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2500;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  background: var(--nes-gold-dark);
+  color: var(--nes-black);
+  border: 2px solid var(--nes-gold-bright);
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--nes-black);
+}
+
+.tutorial-replay-btn:hover,
+.tutorial-replay-btn:focus-visible {
+  background: var(--nes-gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-spotlight { transition: none; }
 }
 
 /* ---------- Responsive ---------- */
