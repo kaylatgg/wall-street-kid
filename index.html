@@ -16,7 +16,9 @@
   <header class="title-bar">
     <button type="button" id="sound-toggle-btn" class="sound-toggle-btn" aria-label="Toggle sound">🔊</button>
     <h1>WALL STREET KID</h1>
-    <p class="subtitle">— A Fortune Awaits —</p>
+    <div class="ticker-tape" aria-hidden="true">
+      <div class="ticker-tape-track" id="ticker-tape-track"></div>
+    </div>
   </header>
 
   <section class="dashboard">
@@ -31,10 +33,15 @@
     <div class="stat-box">
       <span class="stat-label">NET WORTH</span>
       <span class="stat-value stat-value-money" id="stat-networth">$500,000</span>
+      <span class="stat-sub" id="stat-rival">RIVAL: $500,000</span>
     </div>
     <div class="stat-box stat-box-checkpoint">
       <span class="stat-label">NEXT CHECKPOINT</span>
       <span class="stat-value" id="stat-checkpoint">DAY 15 — $600,000</span>
+    </div>
+    <div class="stat-box stat-box-allocation">
+      <span class="stat-label">ALLOCATION</span>
+      <canvas id="allocation-chart" width="44" height="44"></canvas>
     </div>
   </section>
 
@@ -98,6 +105,7 @@
           <div class="player-avatar-box">
             <span class="panel-title avatar-tag">YOU</span>
             <div class="player-avatar" id="player-avatar"></div>
+            <span class="career-title" id="career-title">ROOKIE TRADER</span>
           </div>
         </div>
       </div>

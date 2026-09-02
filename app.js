@@ -48,6 +48,25 @@ const config = { maxDays: 30 };
 // mutates stock.price — Play Again resets against this, not a hardcoded copy.
 const STOCK_STARTING_PRICES = Object.fromEntries(stocks.map(s => [s.id, s.price]));
 
+// ---------- rival portfolio (v2) ----------
+// A fixed, non-adaptive comparison, not a second win/lose track: an even
+// buy-and-hold basket bought once at day-1 prices with the same starting
+// cash, then simply revalued against the real stock.price each render.
+// Never read by checkMilestone/endGame — display only.
+let rivalShares = {};
+
+function buildRivalBasket() {
+  const perStock = STARTING_CASH / stocks.length;
+  rivalShares = Object.fromEntries(
+    stocks.map(s => [s.id, perStock / STOCK_STARTING_PRICES[s.id]])
+  );
+}
+buildRivalBasket();
+
+function rivalNetWorth() {
+  return stocks.reduce((total, s) => total + (rivalShares[s.id] || 0) * s.price, 0);
+}
+
 // ---------- news / tips ----------
 // Each sector-tagged headline carries a price effect (a signed percentage)
 // applied to every stock in that sector on top of its normal drift+volatility
@@ -306,7 +325,7 @@ function checkCommonTradeAchievements(stock, tradeValue) {
 
   const ownedCount = stocks.filter(s => (player.holdings[s.id] || 0) > 0).length;
   if (ownedCount >= 4) {
-    unlockAchievement("diversified", "DIVERSIFIED!", "Own shares in 4 or more companies!");
+    unlockAchievement("diversified", "DIVERSIFIED!", "Own shares in 4 or more companies! Spreading your cash around lowers the risk of one bad stock sinking you.");
   }
   if (ownedCount >= stocks.length) {
     unlockAchievement("marketMaven", "MARKET MAVEN!", "Own a piece of every company!");
@@ -329,6 +348,24 @@ function nextMilestone() {
   // so it should no longer display as "next" — otherwise the checkpoint box
   // keeps showing an already-cleared requirement until the following day
   return milestones.find(m => m.day > player.day) || null;
+}
+
+// Cosmetic-only career ladder, thresholds spread across the existing
+// checkpoint range (start 500k, day-15 checkpoint 600k, day-30 800k) so all
+// four titles are realistically reachable across one playthrough.
+const CAREER_TITLES = [
+  { min: 0,       label: "ROOKIE TRADER" },
+  { min: 600_000, label: "JUNIOR ANALYST" },
+  { min: 750_000, label: "WALL STREET KID" },
+  { min: 900_000, label: "MARKET MOGUL" },
+];
+
+function careerTitleForNetWorth(currentNetWorth) {
+  let label = CAREER_TITLES[0].label;
+  for (const tier of CAREER_TITLES) {
+    if (currentNetWorth >= tier.min) label = tier.label;
+  }
+  return label;
 }
 
 function netWorth() {
@@ -624,7 +661,7 @@ function sellStock() {
   SOUNDS.sell();
 
   if (stock.price > avgCost) {
-    unlockAchievement("profitTaker", "PROFIT TAKER!", "Sold for more than you paid!");
+    unlockAchievement("profitTaker", "PROFIT TAKER!", "Sold for more than you paid! Locking in a gain like that is the whole point of buying low.");
   }
   checkCommonTradeAchievements(stock, proceeds);
   refreshAfterTrade();
@@ -644,6 +681,7 @@ function renderDashboard() {
   document.getElementById("stat-day").textContent = `${player.day} / ${config.maxDays}`;
   document.getElementById("stat-cash").textContent = formatMoney(player.cash);
   document.getElementById("stat-networth").textContent = formatMoney(netWorth());
+  document.getElementById("stat-rival").textContent = `RIVAL: ${formatMoney(rivalNetWorth())}`;
 
   const upcoming = nextMilestone();
   document.getElementById("stat-checkpoint").textContent = upcoming
@@ -654,11 +692,108 @@ function renderDashboard() {
   const avatarState = getAvatarStateForNetWorth(player.day, currentNetWorth);
 
   if (lastPaceState === "stressed" && (avatarState === "neutral" || avatarState === "happy")) {
-    unlockAchievement("comebackKid", "COMEBACK KID!", "Bounced back from being stressed!");
+    unlockAchievement("comebackKid", "COMEBACK KID!", "Bounced back from being stressed! Recovering from a rough stretch is part of investing, not a failure.");
   }
   lastPaceState = avatarState;
 
   setAvatarState(avatarState);
+  document.getElementById("career-title").textContent = careerTitleForNetWorth(currentNetWorth);
+  drawAllocationChart();
+}
+
+// ---------- allocation donut chart (v2) ----------
+// Cash + one slice per stock currently held, by dollar value. Tiny (44x44)
+// canvas redrawn on every dashboard render — cheap enough not to bother
+// diffing against the previous frame.
+const ALLOCATION_COLORS = ["#ffd23f", "#00e756", "#ff3355", "#4477ee", "#1c8c7a", "#e8b382", "#9797b3", "#c084fc"];
+
+function drawAllocationChart() {
+  const canvas = document.getElementById("allocation-chart");
+  const ctx = canvas.getContext("2d");
+  const size = canvas.width;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerRadius = size / 2 - 1;
+  const innerRadius = outerRadius * 0.55;
+
+  ctx.clearRect(0, 0, size, size);
+
+  const slices = [{ label: "CASH", value: player.cash, color: "#55627f" }];
+  stocks.forEach((s, i) => {
+    const shares = player.holdings[s.id] || 0;
+    if (shares > 0) {
+      slices.push({ label: s.id, value: shares * s.price, color: ALLOCATION_COLORS[i % ALLOCATION_COLORS.length] });
+    }
+  });
+
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  if (total <= 0) return;
+
+  let angle = -Math.PI / 2;
+  for (const slice of slices) {
+    const sliceAngle = (slice.value / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, outerRadius, angle, angle + sliceAngle);
+    ctx.closePath();
+    ctx.fillStyle = slice.color;
+    ctx.fill();
+    angle += sliceAngle;
+  }
+
+  // punch the donut hole and a thin dark ring separating slices from center
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2);
+  ctx.fillStyle = "#0d0d1a";
+  ctx.fill();
+}
+
+// ---------- ticker tape (v2) ----------
+// Rendered twice back to back into one track; the CSS animation scrolls it
+// exactly -50% so the seam between the two copies is invisible mid-loop.
+function renderTickerTape() {
+  const items = stocks.map(s => {
+    const change = s.lastChangePercent;
+    const cls = change === null ? "" : change > 0 ? "positive" : change < 0 ? "negative" : "";
+    const changeText = change === null ? "" : ` (${change > 0 ? "+" : ""}${change.toFixed(1)}%)`;
+    return `<span class="ticker-item ${cls}"><span class="ticker-item-symbol">${s.id.toUpperCase()}</span><span class="ticker-item-price">${formatPrice(s.price)}${changeText}</span></span>`;
+  }).join("");
+
+  document.getElementById("ticker-tape-track").innerHTML = items + items;
+}
+
+// ---------- per-stock sparklines (v2) ----------
+// Uses the history[] array already tracked per stock — no new data model.
+function drawSparkline(canvas, history) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const points = history.slice(-15);
+  if (points.length < 2) return;
+
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+
+  ctx.beginPath();
+  points.forEach((price, i) => {
+    const x = (i / (points.length - 1)) * (w - 2) + 1;
+    const y = h - 1 - ((price - min) / range) * (h - 2);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = points[points.length - 1] >= points[0] ? "#00e756" : "#ff3355";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawAllSparklines() {
+  for (const stock of stocks) {
+    drawSparkline(document.querySelector(`canvas[data-spark-id="${stock.id}"]`), stock.history);
+  }
 }
 
 function renderStockTable() {
@@ -692,7 +827,7 @@ function renderStockTable() {
 
     tr.innerHTML = `
       <td class="stock-ticker">${stock.id.toUpperCase()}</td>
-      <td class="stock-company">${stock.name}<button type="button" class="info-icon" data-info-id="${stock.id}" aria-label="About ${stock.name}">&#9432;</button></td>
+      <td class="stock-company">${stock.name}<button type="button" class="info-icon" data-info-id="${stock.id}" aria-label="About ${stock.name}">&#9432;</button><canvas class="sparkline" data-spark-id="${stock.id}" width="24" height="11"></canvas></td>
       <td class="stock-price ${flashClass}" data-stock-id="${stock.id}">${formatPrice(stock.price)}</td>
       <td class="stock-change ${changeClass} ${flashClass}" data-change-id="${stock.id}">${changeText}</td>
       <td class="stock-gain-loss ${gainLossClass}">${gainLossText}</td>
@@ -700,6 +835,8 @@ function renderStockTable() {
     `;
     tbody.appendChild(tr);
   }
+
+  drawAllSparklines();
 }
 
 // Highlights the stock-table row matching the Broker panel's current dropdown
@@ -730,6 +867,7 @@ function renderAll() {
   renderStockTable();
   renderTradeStockOptions();
   syncSelectedStockRow();
+  renderTickerTape();
 }
 
 // ---------- pixel-art portraits ----------

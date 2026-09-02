@@ -97,7 +97,8 @@ html, body {
   background: var(--nes-navy);
   padding: 10px 22px;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: 380px;
   box-shadow: 0 0 0 4px var(--nes-black), 0 0 16px 2px rgba(255, 210, 63, 0.55), 6px 6px 0 var(--nes-black);
   animation: achievementToastPop 3s ease-in-out forwards;
 }
@@ -189,6 +190,52 @@ html, body {
   text-transform: uppercase;
 }
 
+/* ---------- Ticker tape ---------- */
+/* Replaces the old static tagline line — same slot in the header, no added
+   height, so the continuously-scrolling strip can't affect the one-screen
+   fit. The track is rendered twice back to back by JS and animated exactly
+   -50% so the loop seam is invisible. */
+
+.ticker-tape {
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 1px solid var(--nes-border-soft);
+  padding-top: 4px;
+}
+
+.ticker-tape-track {
+  display: inline-block;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  animation: tickerScroll 26s linear infinite;
+}
+
+.ticker-item {
+  display: inline-block;
+  padding: 0 18px;
+  color: var(--nes-gray);
+}
+
+.ticker-item .ticker-item-symbol {
+  color: var(--nes-white);
+  margin-right: 6px;
+}
+
+.ticker-item.positive .ticker-item-symbol,
+.ticker-item.positive .ticker-item-price { color: var(--nes-green); }
+.ticker-item.negative .ticker-item-symbol,
+.ticker-item.negative .ticker-item-price { color: var(--nes-red); }
+
+@keyframes tickerScroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-tape-track { animation: none; }
+}
+
 /* ---------- Generic panel ---------- */
 
 .panel {
@@ -216,7 +263,7 @@ html, body {
 .dashboard {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 
@@ -250,6 +297,27 @@ html, body {
 
 .stat-box-checkpoint .stat-value {
   font-size: 15px;
+}
+
+.stat-sub {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--nes-gray);
+}
+
+.stat-box-allocation {
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+  gap: 6px;
+}
+
+.stat-box-allocation .stat-label {
+  writing-mode: horizontal-tb;
+}
+
+.stat-box-allocation canvas {
+  flex-shrink: 0;
 }
 
 /* value flash states, used later once trading/price logic is wired up */
@@ -405,6 +473,11 @@ html, body {
 
 .stock-company {
   color: var(--nes-gray);
+}
+
+.sparkline {
+  vertical-align: middle;
+  margin-left: 6px;
 }
 
 .info-icon {
@@ -652,12 +725,23 @@ html, body {
   flex: 0 0 150px;
   width: 150px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 3px;
   border: 3px solid var(--nes-gold);
   background: var(--nes-black);
   padding: 6px;
   box-shadow: 4px 4px 0 var(--nes-black);
+}
+
+.career-title {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--nes-gold);
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.1;
 }
 
 .avatar-tag {
