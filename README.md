@@ -55,11 +55,34 @@ oscillator tones, not audio files. The only external dependency is the
 Google Fonts CDN (Press Start 2P / VT323); if that's unreachable the game
 still runs, just with a plainer fallback font.
 
-## v2 — "Live Trading Floor" (in progress)
+## v2 — "Live Trading Floor"
 
-A larger upgrade is in progress on the `v2-live-trading-floor` branch —
-not yet merged to `master`. Planned/in-progress additions include a live
-ticker tape, per-stock sparklines, a portfolio allocation chart, market-wide
-event days, a rival portfolio to compare against, a first-time-user
-onboarding tour, and more. This section will be filled in with the actual
-final feature list once that branch is reviewed and merged.
+A larger upgrade on the `v2-live-trading-floor` branch — not yet merged to
+`master`. Adds, on top of everything in v1:
+
+- A scrolling ticker tape (all 8 tickers + live price + daily change) built
+  into the header, plus a tiny canvas sparkline per stock drawn from its
+  existing price history.
+- A canvas donut chart showing cash vs. current holdings by value, and a
+  fixed buy-and-hold rival portfolio shown next to your own net worth for
+  comparison (display only — never affects your win/lose checkpoints).
+- A cosmetic career-title ladder (Rookie Trader → Junior Analyst → Wall
+  Street Kid → Market Mogul) next to the player avatar.
+- Keyboard shortcuts: number keys select a stock, Up/Down adjust share
+  count, Enter buys, Escape closes the tutorial — all gated by a generic
+  "is any modal open" check rather than a hardcoded list.
+- A short canvas confetti burst on the WIN screen, and a compact
+  end-of-game report card (best/worst closed trade, most-held stock, days
+  spent in each avatar mood) on both WIN and GAME OVER.
+- Market-wide "Crash Day" / "Boom Day" events (roughly once every 16 days
+  advanced, a 3-7% swing applied to every stock at once) with their own
+  toast, screen flash, sound, and a "Survived the Crash!" achievement —
+  tuned down from an initial 8-15% swing after simulation showed that
+  magnitude was hurting the diversify-and-hold win rate far more than
+  expected (see commit history for the before/after numbers).
+- Broker's Choice: an occasional pay/hold/ignore pop-up with a small hidden
+  cost or payout, guaranteed never to fire on the same day as a market
+  event.
+- A first-time onboarding tour (dimmed spotlight overlay, one real UI
+  element highlighted per step), auto-playing once and replayable anytime
+  from the "?" button in the corner.
