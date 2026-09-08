@@ -1490,42 +1490,89 @@ document.addEventListener("keydown", (event) => {
 const TUTORIAL_SEEN_KEY = "wsk_tutorial_seen";
 let tutorialStep = 0;
 
+// Each step's `targets` is an array of "groups" — 0, 1, or 2 of them, each
+// rendered as its own spotlight cutout. A group is itself an array of one
+// or more selectors merged into a single union rectangle, for a step that
+// needs to highlight two adjacent-but-separate elements as one connected
+// idea (net worth + the checkpoint requirement) alongside a second,
+// unrelated highlight (Advance Day) — real gap this fixes: that combined
+// step previously only ever spotlighted Advance Day, leaving the net
+// worth/checkpoint display dimmed under the overlay for the entire tour.
 const TUTORIAL_STEPS = [
-  { target: null, text: `Welcome to Wall Street Kid! You start with ${formatMoney(STARTING_CASH)} and ${config.maxDays} days to grow it to ${formatMoney(milestones[milestones.length - 1].requiredNetWorth)}.` },
-  { target: ".stock-panel", text: "This is the Stock Exchange. A share is a tiny piece of a company — prices move every day." },
-  { target: ".news-ticker", text: "Market news gives you a lean on what's coming next — a hint, not a guarantee." },
-  { target: ".trade-panel", text: "Pick a stock, choose your shares, then Buy. Selling locks in a gain or a loss." },
-  { target: ".advance-day-wrap", text: "Advance Day moves time forward and updates prices. Net worth is what gets judged at each checkpoint." },
-  { target: null, text: "You're ready. Let's trade!" },
+  { targets: [], text: `Welcome to Wall Street Kid! You start with ${formatMoney(STARTING_CASH)} and ${config.maxDays} days to grow it to ${formatMoney(milestones[milestones.length - 1].requiredNetWorth)}.` },
+  { targets: [[".stock-panel"]], text: "This is the Stock Exchange. A share is a tiny piece of a company — prices move every day." },
+  { targets: [[".news-ticker"]], text: "Market news gives you a lean on what's coming next — a hint, not a guarantee." },
+  { targets: [[".trade-panel"]], text: "Pick a stock, choose your shares, then Buy. Selling locks in a gain or a loss." },
+  { targets: [[".stat-box-networth", ".stat-box-checkpoint"], [".advance-day-wrap"]], text: "Advance Day moves time forward and updates prices. Net worth is what gets judged at each checkpoint." },
+  { targets: [], text: "You're ready. Let's trade!" },
 ];
 
-function positionTutorialSpotlight(target) {
-  const spotlight = document.getElementById("tutorial-spotlight");
-  if (!target) {
-    const cx = window.innerWidth / 2;
-    const cy = window.innerHeight / 2;
-    spotlight.style.left = `${cx}px`;
-    spotlight.style.top = `${cy}px`;
-    spotlight.style.width = "0px";
-    spotlight.style.height = "0px";
-    spotlight.style.borderColor = "transparent";
-    return;
+function unionRect(selectors) {
+  let rect = null;
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    rect = rect
+      ? {
+          left: Math.min(rect.left, r.left),
+          top: Math.min(rect.top, r.top),
+          right: Math.max(rect.right, r.right),
+          bottom: Math.max(rect.bottom, r.bottom),
+        }
+      : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
   }
-  const el = document.querySelector(target);
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
+  return rect;
+}
+
+function collapseSpotlight(spotlight) {
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  spotlight.style.left = `${cx}px`;
+  spotlight.style.top = `${cy}px`;
+  spotlight.style.width = "0px";
+  spotlight.style.height = "0px";
+  spotlight.style.borderColor = "transparent";
+}
+
+function placeSpotlight(spotlight, rect) {
   const pad = 6;
   spotlight.style.left = `${rect.left - pad}px`;
   spotlight.style.top = `${rect.top - pad}px`;
-  spotlight.style.width = `${rect.width + pad * 2}px`;
-  spotlight.style.height = `${rect.height + pad * 2}px`;
+  spotlight.style.width = `${rect.right - rect.left + pad * 2}px`;
+  spotlight.style.height = `${rect.bottom - rect.top + pad * 2}px`;
   spotlight.style.borderColor = "var(--nes-gold)";
+}
+
+function positionTutorialSpotlight(targets) {
+  const spotlight1 = document.getElementById("tutorial-spotlight");
+  const spotlight2 = document.getElementById("tutorial-spotlight-2");
+
+  const group1 = targets[0];
+  const group2 = targets[1];
+
+  if (!group1) {
+    collapseSpotlight(spotlight1);
+  } else {
+    const rect = unionRect(group1);
+    if (rect) placeSpotlight(spotlight1, rect);
+  }
+
+  if (!group2) {
+    spotlight2.classList.add("hidden");
+  } else {
+    const rect = unionRect(group2);
+    if (rect) {
+      spotlight2.classList.remove("hidden");
+      placeSpotlight(spotlight2, rect);
+    }
+  }
 }
 
 function renderTutorialStep() {
   const step = TUTORIAL_STEPS[tutorialStep];
   document.getElementById("tutorial-text").textContent = step.text;
-  positionTutorialSpotlight(step.target);
+  positionTutorialSpotlight(step.targets);
   const isLast = tutorialStep === TUTORIAL_STEPS.length - 1;
   document.getElementById("tutorial-next").textContent = isLast ? "LET'S TRADE!" : "NEXT";
 }
@@ -1539,6 +1586,11 @@ function openTutorial() {
 
 function closeTutorial(markSeen) {
   document.getElementById("tutorial-overlay").classList.add("hidden");
+  // tidy the second spotlight's own state on close too — harmless either
+  // way since it's a child of tutorial-overlay and already invisible once
+  // the overlay itself is hidden, but avoids leaving a stale "visible" class
+  // sitting on it between closes
+  document.getElementById("tutorial-spotlight-2").classList.add("hidden");
   if (markSeen) {
     try { localStorage.setItem(TUTORIAL_SEEN_KEY, "1"); } catch (e) { /* storage unavailable — fine to skip persisting */ }
   }
@@ -1560,7 +1612,7 @@ document.getElementById("tutorial-replay-btn").addEventListener("click", () => o
 
 window.addEventListener("resize", () => {
   const overlay = document.getElementById("tutorial-overlay");
-  if (!overlay.classList.contains("hidden")) positionTutorialSpotlight(TUTORIAL_STEPS[tutorialStep].target);
+  if (!overlay.classList.contains("hidden")) positionTutorialSpotlight(TUTORIAL_STEPS[tutorialStep].targets);
 });
 
 renderAll();
