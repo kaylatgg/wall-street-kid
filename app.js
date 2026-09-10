@@ -479,61 +479,6 @@ function showMarketEventBanner(marketEvent) {
   overlayFx.classList.add(flashClass);
 }
 
-// ---------- Broker's Choice (v2) ----------
-const BROKERS_CHOICE_CHANCE = 1 / 6; // roughly once every 6 days advanced
-const BROKERS_CHOICE_FEE = 3000;
-
-// COLLISION RULE: only ever called when the current day did NOT already
-// have a market-wide event — see advanceDay() — so a player never sees two
-// competing pop-ups from one Advance Day click.
-function maybeTriggerBrokersChoice() {
-  if (player.day <= 1) return;
-  if (Math.random() >= BROKERS_CHOICE_CHANCE) return;
-  openBrokersChoice();
-}
-
-// COPY NOTE: this event is framed as a rumor/hype the broker's picked up on
-// the floor — speculation, not advance knowledge of a specific move — so it
-// doesn't read as insider trading. The underlying mechanic is unchanged: a
-// flat-fee gamble with a hidden win/lose payout, nothing tied to any real
-// stock or headline.
-function openBrokersChoice() {
-  document.getElementById("brokers-choice-text").textContent =
-    `Your broker leans in: "There's some buzz going around the floor — ${formatMoney(BROKERS_CHOICE_FEE)} and I'll fill you in. Could be nothing."`;
-  document.getElementById("brokers-choice-pay").disabled = player.cash < BROKERS_CHOICE_FEE;
-  disableGameControls(true);
-  document.getElementById("brokers-choice-modal").classList.remove("hidden");
-}
-
-function closeBrokersChoice() {
-  document.getElementById("brokers-choice-modal").classList.add("hidden");
-  if (!gameEnded) disableGameControls(false);
-}
-
-function resolveBrokersChoicePay() {
-  player.cash -= BROKERS_CHOICE_FEE;
-  const paidOff = Math.random() < 0.6;
-  if (paidOff) {
-    const payout = 3000 + Math.random() * 5000;
-    player.cash += payout;
-    setTradeFeedback(`The buzz was worth something — netted you ${formatMoney(payout - BROKERS_CHOICE_FEE)}.`);
-  } else {
-    setTradeFeedback(`Just noise. You're out ${formatMoney(BROKERS_CHOICE_FEE)}.`);
-  }
-  refreshAfterTrade();
-  closeBrokersChoice();
-}
-
-function resolveBrokersChoiceHold() {
-  setTradeFeedback("You held onto your cash — not every rumor's worth chasing.");
-  closeBrokersChoice();
-}
-
-function resolveBrokersChoiceIgnore() {
-  setTradeFeedback("You brushed off the rumor and got back to trading.");
-  closeBrokersChoice();
-}
-
 function advanceDay() {
   SOUNDS.advanceDay();
 
@@ -600,15 +545,8 @@ function advanceDay() {
 
   checkMilestone();
 
-  if (!gameEnded) {
-    if (marketEvent && marketEvent.type === "crash") {
-      unlockAchievement("survivedCrash", "SURVIVED THE CRASH!", "The market crashed and you're still standing.");
-    }
-    // COLLISION RULE: Broker's Choice only ever rolls on a day that did NOT
-    // already have a market-wide event — see maybeTriggerBrokersChoice.
-    if (!marketEvent) {
-      maybeTriggerBrokersChoice();
-    }
+  if (!gameEnded && marketEvent && marketEvent.type === "crash") {
+    unlockAchievement("survivedCrash", "SURVIVED THE CRASH!", "The market crashed and you're still standing.");
   }
 }
 
@@ -830,7 +768,6 @@ function resetGame() {
   disableGameControls(false);
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("overlay-box").classList.remove("win", "game-over");
-  document.getElementById("brokers-choice-modal").classList.add("hidden");
   document.getElementById("market-event-banner").classList.add("hidden");
   document.getElementById("market-event-banner").innerHTML = "";
   document.querySelector(".crt-overlay").classList.remove("market-flash-boom", "market-flash-crash");
@@ -1420,10 +1357,6 @@ document.getElementById("advance-day-btn").addEventListener("click", () => {
 // always "Play Again."
 document.getElementById("overlay-btn").addEventListener("click", resetGame);
 
-document.getElementById("brokers-choice-pay").addEventListener("click", resolveBrokersChoicePay);
-document.getElementById("brokers-choice-hold").addEventListener("click", resolveBrokersChoiceHold);
-document.getElementById("brokers-choice-ignore").addEventListener("click", resolveBrokersChoiceIgnore);
-
 const sharesInput = document.getElementById("trade-shares-input");
 
 document.getElementById("shares-decrement").addEventListener("click", () => {
@@ -1442,8 +1375,8 @@ document.getElementById("trade-stock-select").addEventListener("change", syncSel
 // Generic guard: any element carrying .js-modal-blocker that's currently
 // visible blocks shortcuts — new overlays/toasts opt in by adding the class
 // (see stock-info-modal, achievement-toast, overlay above, plus the v2
-// market-event banner / Broker's Choice modal / tutorial overlay), so this
-// never needs a hardcoded list of "the three modals that exist today."
+// market-event banner / tutorial overlay), so this never needs a hardcoded
+// list of "the modals that exist today."
 function isAnyModalOpen() {
   return Array.from(document.querySelectorAll(".js-modal-blocker"))
     .some(el => !el.classList.contains("hidden"));

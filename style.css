@@ -871,13 +871,6 @@ html, body {
   margin-bottom: 20px;
 }
 
-.brokers-choice-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-
 .stock-info-meta {
   color: var(--nes-gold);
   letter-spacing: 1px;

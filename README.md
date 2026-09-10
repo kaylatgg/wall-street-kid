@@ -80,9 +80,6 @@ A larger upgrade on the `v2-live-trading-floor` branch — not yet merged to
   tuned down from an initial 8-15% swing after simulation showed that
   magnitude was hurting the diversify-and-hold win rate far more than
   expected (see commit history for the before/after numbers).
-- Broker's Choice: an occasional pay/hold/ignore pop-up with a small hidden
-  cost or payout, guaranteed never to fire on the same day as a market
-  event.
 - A first-time onboarding tour (dimmed spotlight overlay, one real UI
   element highlighted per step), auto-playing once and replayable anytime
   from the "?" button in the corner.
