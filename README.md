@@ -57,8 +57,8 @@ still runs, just with a plainer fallback font.
 
 ## v2 — "Live Trading Floor"
 
-A larger upgrade on the `v2-live-trading-floor` branch — not yet merged to
-`master`. Adds, on top of everything in v1:
+A larger upgrade, merged into `master` from the `v2-live-trading-floor`
+branch. Adds, on top of everything in v1:
 
 - A scrolling ticker tape (all 8 tickers + live price + daily change) built
   into the header, plus a tiny canvas sparkline per stock drawn from its
