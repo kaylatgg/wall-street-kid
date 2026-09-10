@@ -492,9 +492,14 @@ function maybeTriggerBrokersChoice() {
   openBrokersChoice();
 }
 
+// COPY NOTE: this event is framed as a rumor/hype the broker's picked up on
+// the floor — speculation, not advance knowledge of a specific move — so it
+// doesn't read as insider trading. The underlying mechanic is unchanged: a
+// flat-fee gamble with a hidden win/lose payout, nothing tied to any real
+// stock or headline.
 function openBrokersChoice() {
   document.getElementById("brokers-choice-text").textContent =
-    `Your broker leans in: "I've got an early tip on tomorrow's move — ${formatMoney(BROKERS_CHOICE_FEE)} and it's yours. No guarantees."`;
+    `Your broker leans in: "There's some buzz going around the floor — ${formatMoney(BROKERS_CHOICE_FEE)} and I'll fill you in. Could be nothing."`;
   document.getElementById("brokers-choice-pay").disabled = player.cash < BROKERS_CHOICE_FEE;
   disableGameControls(true);
   document.getElementById("brokers-choice-modal").classList.remove("hidden");
@@ -511,21 +516,21 @@ function resolveBrokersChoicePay() {
   if (paidOff) {
     const payout = 3000 + Math.random() * 5000;
     player.cash += payout;
-    setTradeFeedback(`The tip paid off — netted you ${formatMoney(payout - BROKERS_CHOICE_FEE)}.`);
+    setTradeFeedback(`The buzz was worth something — netted you ${formatMoney(payout - BROKERS_CHOICE_FEE)}.`);
   } else {
-    setTradeFeedback(`The tip was bad. You're out ${formatMoney(BROKERS_CHOICE_FEE)}.`);
+    setTradeFeedback(`Just noise. You're out ${formatMoney(BROKERS_CHOICE_FEE)}.`);
   }
   refreshAfterTrade();
   closeBrokersChoice();
 }
 
 function resolveBrokersChoiceHold() {
-  setTradeFeedback("You held onto your cash and waited it out.");
+  setTradeFeedback("You held onto your cash — not every rumor's worth chasing.");
   closeBrokersChoice();
 }
 
 function resolveBrokersChoiceIgnore() {
-  setTradeFeedback("You brushed off the offer.");
+  setTradeFeedback("You brushed off the rumor and got back to trading.");
   closeBrokersChoice();
 }
 
