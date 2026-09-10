@@ -48,6 +48,25 @@ const config = { maxDays: 30 };
 // mutates stock.price — Play Again resets against this, not a hardcoded copy.
 const STOCK_STARTING_PRICES = Object.fromEntries(stocks.map(s => [s.id, s.price]));
 
+// ---------- rival portfolio (v2) ----------
+// A fixed, non-adaptive comparison, not a second win/lose track: an even
+// buy-and-hold basket bought once at day-1 prices with the same starting
+// cash, then simply revalued against the real stock.price each render.
+// Never read by checkMilestone/endGame — display only.
+let rivalShares = {};
+
+function buildRivalBasket() {
+  const perStock = STARTING_CASH / stocks.length;
+  rivalShares = Object.fromEntries(
+    stocks.map(s => [s.id, perStock / STOCK_STARTING_PRICES[s.id]])
+  );
+}
+buildRivalBasket();
+
+function rivalNetWorth() {
+  return stocks.reduce((total, s) => total + (rivalShares[s.id] || 0) * s.price, 0);
+}
+
 // ---------- news / tips ----------
 // Each sector-tagged headline carries a price effect (a signed percentage)
 // applied to every stock in that sector on top of its normal drift+volatility
@@ -129,6 +148,11 @@ let currentHeadline = pickInitialHeadline();
 // achievement fires at most once per playthrough (unlockedAchievements);
 // checkpoint-pass banners aren't tracked there since checkMilestone only
 // ever evaluates a given milestone day once per playthrough anyway.
+
+// ---------- report-card tracking (v2) ----------
+// Fed by existing trade/render flow, read only at endGame() time.
+let completedTrades = []; // { stockId, profit } — one entry per sellStock() call
+let moodDays = { happy: 0, neutral: 0, stressed: 0 }; // pace-based mood, one tick per Advance Day
 
 const unlockedAchievements = new Set();
 const toastQueue = [];
@@ -276,6 +300,18 @@ const SOUNDS = {
     { freq: NOTE.E5, duration: 0.16, type: "sawtooth", peakGain: 0.12 },
     { freq: NOTE.C5, duration: 0.35, type: "sawtooth", peakGain: 0.12 },
   ]),
+  crash: () => playSequence([
+    { freq: NOTE.G5, duration: 0.1, type: "sawtooth", peakGain: 0.14 },
+    { freq: NOTE.E5, duration: 0.1, type: "sawtooth", peakGain: 0.14 },
+    { freq: NOTE.C5, duration: 0.1, type: "sawtooth", peakGain: 0.14 },
+    { freq: 196, duration: 0.3, type: "sawtooth", peakGain: 0.15 },
+  ]),
+  boom: () => playSequence([
+    { freq: NOTE.C5, duration: 0.09, type: "square", peakGain: 0.13 },
+    { freq: NOTE.G5, duration: 0.09, type: "square", peakGain: 0.13 },
+    { freq: NOTE.C6, duration: 0.09, type: "square", peakGain: 0.14 },
+    { freq: NOTE.E6, duration: 0.25, type: "square", peakGain: 0.15 },
+  ]),
 };
 
 function toggleSoundMuted() {
@@ -306,7 +342,7 @@ function checkCommonTradeAchievements(stock, tradeValue) {
 
   const ownedCount = stocks.filter(s => (player.holdings[s.id] || 0) > 0).length;
   if (ownedCount >= 4) {
-    unlockAchievement("diversified", "DIVERSIFIED!", "Own shares in 4 or more companies!");
+    unlockAchievement("diversified", "DIVERSIFIED!", "Own shares in 4 or more companies! Spreading your cash around lowers the risk of one bad stock sinking you.");
   }
   if (ownedCount >= stocks.length) {
     unlockAchievement("marketMaven", "MARKET MAVEN!", "Own a piece of every company!");
@@ -329,6 +365,24 @@ function nextMilestone() {
   // so it should no longer display as "next" — otherwise the checkpoint box
   // keeps showing an already-cleared requirement until the following day
   return milestones.find(m => m.day > player.day) || null;
+}
+
+// Cosmetic-only career ladder, thresholds spread across the existing
+// checkpoint range (start 500k, day-15 checkpoint 600k, day-30 800k) so all
+// four titles are realistically reachable across one playthrough.
+const CAREER_TITLES = [
+  { min: 0,       label: "ROOKIE TRADER" },
+  { min: 600_000, label: "JUNIOR ANALYST" },
+  { min: 750_000, label: "WALL STREET KID" },
+  { min: 900_000, label: "MARKET MOGUL" },
+];
+
+function careerTitleForNetWorth(currentNetWorth) {
+  let label = CAREER_TITLES[0].label;
+  for (const tier of CAREER_TITLES) {
+    if (currentNetWorth >= tier.min) label = tier.label;
+  }
+  return label;
 }
 
 function netWorth() {
@@ -366,6 +420,65 @@ function nudgePrice(stock) {
 // day is a meaningfully large, but reachable, single-day gain.
 const BIG_WIN_THRESHOLD = 5_000;
 
+// ---------- market-wide events (v2) ----------
+// DELIBERATE: this feature (and everything built after it) is going in
+// without a preceding commit checkpoint — see the Part 2 assignment's
+// "break it and recover it" exercise. Not an oversight.
+// Initial tuning (1/11 chance, 8-15% magnitude, per the spec's own
+// guideline) was simulated post-build the same way DAILY_DRIFT originally
+// was — 10,000-run diversify-and-hold batches — and it hit the win rate
+// much harder than expected: 99.7% (no market events) -> 65.3%. A single
+// large market-wide swing landing near the day-15 checkpoint is punishing
+// against a binary pass/fail gate, more so than an equivalent amount of
+// ordinary per-stock volatility ever is. Magnitude mattered far more than
+// frequency for restoring winnability (cutting frequency alone to 1/25-1/30
+// at the original 8-15% magnitude still only recovered to ~77-80%), so this
+// final tuning leans on magnitude: 1/16 chance, 3-7% swing -> 96.7% / 91.2%.
+const MARKET_EVENT_CHANCE = 1 / 16;
+const MARKET_EVENT_MIN_MAGNITUDE = 0.03;
+const MARKET_EVENT_MAX_MAGNITUDE = 0.07;
+
+function rollMarketEvent(day) {
+  if (day <= 1) return null; // nothing to react to on the very first day
+  if (Math.random() >= MARKET_EVENT_CHANCE) return null;
+  const isBoom = Math.random() < 0.5;
+  const magnitude = MARKET_EVENT_MIN_MAGNITUDE + Math.random() * (MARKET_EVENT_MAX_MAGNITUDE - MARKET_EVENT_MIN_MAGNITUDE);
+  return { type: isBoom ? "boom" : "crash", magnitude: isBoom ? magnitude : -magnitude };
+}
+
+// Own element (not the shared achievement queue) so a market event and an
+// achievement landing on the same Advance Day both show at once instead of
+// one waiting behind the other.
+function showMarketEventBanner(marketEvent) {
+  const isBoom = marketEvent.type === "boom";
+  const pct = Math.abs(Math.round(marketEvent.magnitude * 100));
+  const title = isBoom ? "BOOM DAY!" : "CRASH DAY!";
+  const message = isBoom
+    ? `The whole market surges — every stock jumps about ${pct}%!`
+    : `The whole market plunges — every stock drops about ${pct}%!`;
+
+  if (isBoom) SOUNDS.boom(); else SOUNDS.crash();
+
+  const container = document.getElementById("market-event-banner");
+  container.innerHTML = `
+    <div class="achievement-toast-box toast-${isBoom ? "green" : "red"}">
+      <div class="achievement-toast-title">${title}</div>
+      <div class="achievement-toast-message">${message}</div>
+    </div>
+  `;
+  container.classList.remove("hidden");
+  setTimeout(() => {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+  }, TOAST_DURATION_MS);
+
+  const overlayFx = document.querySelector(".crt-overlay");
+  const flashClass = isBoom ? "market-flash-boom" : "market-flash-crash";
+  overlayFx.classList.remove("market-flash-boom", "market-flash-crash");
+  void overlayFx.offsetWidth; // force reflow so back-to-back flashes replay
+  overlayFx.classList.add(flashClass);
+}
+
 function advanceDay() {
   SOUNDS.advanceDay();
 
@@ -376,6 +489,7 @@ function advanceDay() {
   // the headline on screen right now predicts THIS move, not the next one —
   // capture it before picking tomorrow's headline
   const activeHeadline = currentHeadline;
+  const marketEvent = rollMarketEvent(player.day);
 
   for (const stock of stocks) {
     const previousPrice = stock.price;
@@ -389,6 +503,12 @@ function advanceDay() {
       newPrice = Math.max(0.5, Math.round(newPrice * (1 + activeHeadline.effect) * 100) / 100);
     }
 
+    // market-wide event, if one rolled, hits every stock the same direction
+    // on top of its normal drift/volatility and any headline effect
+    if (marketEvent) {
+      newPrice = Math.max(0.5, Math.round(newPrice * (1 + marketEvent.magnitude) * 100) / 100);
+    }
+
     stock.price = newPrice;
     stock.history.push(newPrice);
     stock.lastChangePercent = ((newPrice - previousPrice) / previousPrice) * 100;
@@ -398,7 +518,14 @@ function advanceDay() {
 
   const netWorthAfter = netWorth();
 
+  const paceStateToday = getAvatarStateForNetWorth(player.day, netWorthAfter);
+  moodDays[paceStateToday] = (moodDays[paceStateToday] || 0) + 1;
+
   renderAll();
+
+  if (marketEvent) {
+    showMarketEventBanner(marketEvent);
+  }
 
   // Separate, additional reaction layer on top of the pace-based mood
   // (getAvatarStateForNetWorth): fires on EVERY Advance Day based on that
@@ -417,6 +544,10 @@ function advanceDay() {
   }
 
   checkMilestone();
+
+  if (!gameEnded && marketEvent && marketEvent.type === "crash") {
+    unlockAchievement("survivedCrash", "SURVIVED THE CRASH!", "The market crashed and you're still standing.");
+  }
 }
 
 // ---------- checkpoints (win / game over) ----------
@@ -456,6 +587,101 @@ function checkMilestone() {
   }
 }
 
+// ---------- end-of-game report card (v2) ----------
+// Reads state already tracked elsewhere (completedTrades, moodDays,
+// player.holdings) — no new gameplay logic, display only.
+function renderReportCard() {
+  const card = document.getElementById("overlay-report-card");
+
+  let best = null, worst = null;
+  for (const t of completedTrades) {
+    if (!best || t.profit > best.profit) best = t;
+    if (!worst || t.profit < worst.profit) worst = t;
+  }
+
+  let mostHeld = null;
+  for (const stock of stocks) {
+    const shares = player.holdings[stock.id] || 0;
+    if (shares > 0 && (!mostHeld || shares > mostHeld.shares)) mostHeld = { id: stock.id, shares };
+  }
+
+  const tradeLine = (label, trade) => {
+    if (!trade) return `<div class="report-line">${label}: <strong>—</strong></div>`;
+    const cls = trade.profit >= 0 ? "positive" : "negative";
+    const sign = trade.profit >= 0 ? "+" : "-";
+    return `<div class="report-line">${label}: <strong>${trade.stockId.toUpperCase()}</strong> <span class="${cls}">${sign}${formatMoney(Math.abs(trade.profit))}</span></div>`;
+  };
+
+  const totalMoodDays = moodDays.happy + moodDays.neutral + moodDays.stressed;
+  const moodLine = totalMoodDays === 0
+    ? `<div class="report-line">MOOD: <strong>—</strong></div>`
+    : `<div class="report-line">MOOD: <strong>${moodDays.happy} happy · ${moodDays.neutral} neutral · ${moodDays.stressed} stressed</strong></div>`;
+
+  card.innerHTML = `
+    ${tradeLine("BEST TRADE", best)}
+    ${tradeLine("WORST TRADE", worst)}
+    <div class="report-line">MOST HELD: <strong>${mostHeld ? `${mostHeld.id.toUpperCase()} (${mostHeld.shares} shares)` : "—"}</strong></div>
+    ${moodLine}
+  `;
+}
+
+// ---------- confetti (v2, win screen only) ----------
+// Drawn on a canvas that sits earlier in #overlay's DOM than .overlay-box —
+// see .confetti-canvas — so the opaque card always paints over it and the
+// burst never covers the win text/button.
+const CONFETTI_COLORS = ["#ffd23f", "#00e756", "#4477ee", "#ff6688", "#f5f5f5"];
+let confettiRafId = null;
+
+function launchConfetti() {
+  const canvas = document.getElementById("confetti-canvas");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.classList.remove("hidden");
+  const ctx = canvas.getContext("2d");
+
+  const particles = Array.from({ length: 70 }, () => ({
+    x: Math.random() * canvas.width,
+    y: -20 - Math.random() * canvas.height * 0.5,
+    vx: (Math.random() - 0.5) * 2,
+    vy: 2 + Math.random() * 3,
+    size: 3 + Math.random() * 4,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    rotation: Math.random() * Math.PI,
+    rotationSpeed: (Math.random() - 0.5) * 0.2,
+  }));
+
+  const startTime = performance.now();
+  const DURATION_MS = 2200;
+
+  function frame(now) {
+    const elapsed = now - startTime;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (elapsed > DURATION_MS) {
+      canvas.classList.add("hidden");
+      confettiRafId = null;
+      return;
+    }
+
+    for (const p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rotation += p.rotationSpeed;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+      ctx.restore();
+    }
+
+    confettiRafId = requestAnimationFrame(frame);
+  }
+
+  if (confettiRafId) cancelAnimationFrame(confettiRafId);
+  confettiRafId = requestAnimationFrame(frame);
+}
+
 function buildOverlayAvatar(state) {
   const container = document.getElementById("overlay-avatar");
   container.innerHTML = "";
@@ -485,7 +711,12 @@ function endGame(outcome, milestone, currentNetWorth) {
       `${formatMoney(currentNetWorth)}, needed ${formatMoney(milestone.requiredNetWorth)}.`;
   }
 
+  renderReportCard();
   document.getElementById("overlay").classList.remove("hidden");
+
+  if (outcome === "win") {
+    launchConfetti();
+  }
 }
 
 // Resets every piece of one-time/session state for a clean second
@@ -525,10 +756,21 @@ function resetGame() {
 
   currentHeadline = pickInitialHeadline();
 
+  completedTrades = [];
+  moodDays = { happy: 0, neutral: 0, stressed: 0 };
+  if (confettiRafId) {
+    cancelAnimationFrame(confettiRafId);
+    confettiRafId = null;
+  }
+  document.getElementById("confetti-canvas").classList.add("hidden");
+
   gameEnded = false;
   disableGameControls(false);
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("overlay-box").classList.remove("win", "game-over");
+  document.getElementById("market-event-banner").classList.add("hidden");
+  document.getElementById("market-event-banner").innerHTML = "";
+  document.querySelector(".crt-overlay").classList.remove("market-flash-boom", "market-flash-crash");
 
   document.getElementById("trade-feedback").textContent = "";
   document.getElementById("trade-shares-input").value = 1;
@@ -618,13 +860,14 @@ function sellStock() {
 
   player.cash += proceeds;
   player.holdings[stock.id] = owned - shares;
+  completedTrades.push({ stockId: stock.id, profit: proceeds - avgCost * shares });
 
   setTradeFeedback(`Sold ${shares} share${shares === 1 ? "" : "s"} of ${stock.id.toUpperCase()} for ${formatPrice(proceeds)}.`);
   showFloatingDelta(proceeds);
   SOUNDS.sell();
 
   if (stock.price > avgCost) {
-    unlockAchievement("profitTaker", "PROFIT TAKER!", "Sold for more than you paid!");
+    unlockAchievement("profitTaker", "PROFIT TAKER!", "Sold for more than you paid! Locking in a gain like that is the whole point of buying low.");
   }
   checkCommonTradeAchievements(stock, proceeds);
   refreshAfterTrade();
@@ -644,6 +887,7 @@ function renderDashboard() {
   document.getElementById("stat-day").textContent = `${player.day} / ${config.maxDays}`;
   document.getElementById("stat-cash").textContent = formatMoney(player.cash);
   document.getElementById("stat-networth").textContent = formatMoney(netWorth());
+  document.getElementById("stat-rival").textContent = `RIVAL: ${formatMoney(rivalNetWorth())}`;
 
   const upcoming = nextMilestone();
   document.getElementById("stat-checkpoint").textContent = upcoming
@@ -654,11 +898,108 @@ function renderDashboard() {
   const avatarState = getAvatarStateForNetWorth(player.day, currentNetWorth);
 
   if (lastPaceState === "stressed" && (avatarState === "neutral" || avatarState === "happy")) {
-    unlockAchievement("comebackKid", "COMEBACK KID!", "Bounced back from being stressed!");
+    unlockAchievement("comebackKid", "COMEBACK KID!", "Bounced back from being stressed! Recovering from a rough stretch is part of investing, not a failure.");
   }
   lastPaceState = avatarState;
 
   setAvatarState(avatarState);
+  document.getElementById("career-title").textContent = careerTitleForNetWorth(currentNetWorth);
+  drawAllocationChart();
+}
+
+// ---------- allocation donut chart (v2) ----------
+// Cash + one slice per stock currently held, by dollar value. Tiny (44x44)
+// canvas redrawn on every dashboard render — cheap enough not to bother
+// diffing against the previous frame.
+const ALLOCATION_COLORS = ["#ffd23f", "#00e756", "#ff3355", "#4477ee", "#1c8c7a", "#e8b382", "#9797b3", "#c084fc"];
+
+function drawAllocationChart() {
+  const canvas = document.getElementById("allocation-chart");
+  const ctx = canvas.getContext("2d");
+  const size = canvas.width;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerRadius = size / 2 - 1;
+  const innerRadius = outerRadius * 0.55;
+
+  ctx.clearRect(0, 0, size, size);
+
+  const slices = [{ label: "CASH", value: player.cash, color: "#55627f" }];
+  stocks.forEach((s, i) => {
+    const shares = player.holdings[s.id] || 0;
+    if (shares > 0) {
+      slices.push({ label: s.id, value: shares * s.price, color: ALLOCATION_COLORS[i % ALLOCATION_COLORS.length] });
+    }
+  });
+
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  if (total <= 0) return;
+
+  let angle = -Math.PI / 2;
+  for (const slice of slices) {
+    const sliceAngle = (slice.value / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, outerRadius, angle, angle + sliceAngle);
+    ctx.closePath();
+    ctx.fillStyle = slice.color;
+    ctx.fill();
+    angle += sliceAngle;
+  }
+
+  // punch the donut hole and a thin dark ring separating slices from center
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2);
+  ctx.fillStyle = "#0d0d1a";
+  ctx.fill();
+}
+
+// ---------- ticker tape (v2) ----------
+// Rendered twice back to back into one track; the CSS animation scrolls it
+// exactly -50% so the seam between the two copies is invisible mid-loop.
+function renderTickerTape() {
+  const items = stocks.map(s => {
+    const change = s.lastChangePercent;
+    const cls = change === null ? "" : change > 0 ? "positive" : change < 0 ? "negative" : "";
+    const changeText = change === null ? "" : ` (${change > 0 ? "+" : ""}${change.toFixed(1)}%)`;
+    return `<span class="ticker-item ${cls}"><span class="ticker-item-symbol">${s.id.toUpperCase()}</span><span class="ticker-item-price">${formatPrice(s.price)}${changeText}</span></span>`;
+  }).join("");
+
+  document.getElementById("ticker-tape-track").innerHTML = items + items;
+}
+
+// ---------- per-stock sparklines (v2) ----------
+// Uses the history[] array already tracked per stock — no new data model.
+function drawSparkline(canvas, history) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const points = history.slice(-15);
+  if (points.length < 2) return;
+
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+
+  ctx.beginPath();
+  points.forEach((price, i) => {
+    const x = (i / (points.length - 1)) * (w - 2) + 1;
+    const y = h - 1 - ((price - min) / range) * (h - 2);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = points[points.length - 1] >= points[0] ? "#00e756" : "#ff3355";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawAllSparklines() {
+  for (const stock of stocks) {
+    drawSparkline(document.querySelector(`canvas[data-spark-id="${stock.id}"]`), stock.history);
+  }
 }
 
 function renderStockTable() {
@@ -692,7 +1033,7 @@ function renderStockTable() {
 
     tr.innerHTML = `
       <td class="stock-ticker">${stock.id.toUpperCase()}</td>
-      <td class="stock-company">${stock.name}<button type="button" class="info-icon" data-info-id="${stock.id}" aria-label="About ${stock.name}">&#9432;</button></td>
+      <td class="stock-company">${stock.name}<button type="button" class="info-icon" data-info-id="${stock.id}" aria-label="About ${stock.name}">&#9432;</button><canvas class="sparkline" data-spark-id="${stock.id}" width="24" height="11"></canvas></td>
       <td class="stock-price ${flashClass}" data-stock-id="${stock.id}">${formatPrice(stock.price)}</td>
       <td class="stock-change ${changeClass} ${flashClass}" data-change-id="${stock.id}">${changeText}</td>
       <td class="stock-gain-loss ${gainLossClass}">${gainLossText}</td>
@@ -700,6 +1041,8 @@ function renderStockTable() {
     `;
     tbody.appendChild(tr);
   }
+
+  drawAllSparklines();
 }
 
 // Highlights the stock-table row matching the Broker panel's current dropdown
@@ -730,6 +1073,7 @@ function renderAll() {
   renderStockTable();
   renderTradeStockOptions();
   syncSelectedStockRow();
+  renderTickerTape();
 }
 
 // ---------- pixel-art portraits ----------
@@ -1027,4 +1371,190 @@ document.getElementById("shares-increment").addEventListener("click", () => {
 
 document.getElementById("trade-stock-select").addEventListener("change", syncSelectedStockRow);
 
+// ---------- keyboard shortcuts (v2) ----------
+// Generic guard: any element carrying .js-modal-blocker that's currently
+// visible blocks shortcuts — new overlays/toasts opt in by adding the class
+// (see stock-info-modal, achievement-toast, overlay above, plus the v2
+// market-event banner / tutorial overlay), so this never needs a hardcoded
+// list of "the modals that exist today."
+function isAnyModalOpen() {
+  return Array.from(document.querySelectorAll(".js-modal-blocker"))
+    .some(el => !el.classList.contains("hidden"));
+}
+
+document.addEventListener("keydown", (event) => {
+  // checked ahead of the generic modal guard below (and scoped to only fire
+  // while the tutorial itself is the open overlay) — the tutorial marks
+  // itself .js-modal-blocker like every other overlay, so the general
+  // isAnyModalOpen() early return would otherwise block Escape from ever
+  // reaching the one modal it's meant to dismiss
+  if (event.key === "Escape" && !document.getElementById("tutorial-overlay").classList.contains("hidden")) {
+    closeTutorial(true);
+    return;
+  }
+
+  if (gameEnded || isAnyModalOpen()) return;
+
+  const sharesInput = document.getElementById("trade-shares-input");
+  const active = document.activeElement;
+
+  if (/^[1-8]$/.test(event.key) && active !== sharesInput) {
+    const stock = stocks[parseInt(event.key, 10) - 1];
+    if (stock) {
+      document.getElementById("trade-stock-select").value = stock.id;
+      syncSelectedStockRow();
+    }
+    event.preventDefault();
+    return;
+  }
+
+  // number input already steps natively on Up/Down when it itself has
+  // focus — only handle the keys ourselves when focus is elsewhere, so a
+  // press never double-increments
+  if ((event.key === "ArrowUp" || event.key === "ArrowDown") && active !== sharesInput) {
+    const current = parseInt(sharesInput.value, 10) || 1;
+    sharesInput.value = event.key === "ArrowUp" ? current + 1 : Math.max(1, current - 1);
+    event.preventDefault();
+    return;
+  }
+
+  if (event.key === "Enter") {
+    buyStock();
+    event.preventDefault();
+  }
+});
+
+// ---------- onboarding tutorial (v2) ----------
+const TUTORIAL_SEEN_KEY = "wsk_tutorial_seen";
+let tutorialStep = 0;
+
+// Each step's `targets` is an array of "groups" — 0, 1, or 2 of them, each
+// rendered as its own spotlight cutout. A group is itself an array of one
+// or more selectors merged into a single union rectangle, for a step that
+// needs to highlight two adjacent-but-separate elements as one connected
+// idea (net worth + the checkpoint requirement) alongside a second,
+// unrelated highlight (Advance Day) — real gap this fixes: that combined
+// step previously only ever spotlighted Advance Day, leaving the net
+// worth/checkpoint display dimmed under the overlay for the entire tour.
+const TUTORIAL_STEPS = [
+  { targets: [], text: `Welcome to Wall Street Kid! You start with ${formatMoney(STARTING_CASH)} and ${config.maxDays} days to grow it to ${formatMoney(milestones[milestones.length - 1].requiredNetWorth)}.` },
+  { targets: [[".stock-panel"]], text: "This is the Stock Exchange. A share is a tiny piece of a company — prices move every day." },
+  { targets: [[".news-ticker"]], text: "Market news gives you a lean on what's coming next — a hint, not a guarantee." },
+  { targets: [[".trade-panel"]], text: "Pick a stock, choose your shares, then Buy. Selling locks in a gain or a loss." },
+  { targets: [[".stat-box-networth", ".stat-box-checkpoint"], [".advance-day-wrap"]], text: "Advance Day moves time forward and updates prices. Net worth is what gets judged at each checkpoint." },
+  { targets: [], text: "You're ready. Let's trade!" },
+];
+
+function unionRect(selectors) {
+  let rect = null;
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    rect = rect
+      ? {
+          left: Math.min(rect.left, r.left),
+          top: Math.min(rect.top, r.top),
+          right: Math.max(rect.right, r.right),
+          bottom: Math.max(rect.bottom, r.bottom),
+        }
+      : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  }
+  return rect;
+}
+
+function collapseSpotlight(spotlight) {
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  spotlight.style.left = `${cx}px`;
+  spotlight.style.top = `${cy}px`;
+  spotlight.style.width = "0px";
+  spotlight.style.height = "0px";
+  spotlight.style.borderColor = "transparent";
+}
+
+function placeSpotlight(spotlight, rect) {
+  const pad = 6;
+  spotlight.style.left = `${rect.left - pad}px`;
+  spotlight.style.top = `${rect.top - pad}px`;
+  spotlight.style.width = `${rect.right - rect.left + pad * 2}px`;
+  spotlight.style.height = `${rect.bottom - rect.top + pad * 2}px`;
+  spotlight.style.borderColor = "var(--nes-gold)";
+}
+
+function positionTutorialSpotlight(targets) {
+  const spotlight1 = document.getElementById("tutorial-spotlight");
+  const spotlight2 = document.getElementById("tutorial-spotlight-2");
+
+  const group1 = targets[0];
+  const group2 = targets[1];
+
+  if (!group1) {
+    collapseSpotlight(spotlight1);
+  } else {
+    const rect = unionRect(group1);
+    if (rect) placeSpotlight(spotlight1, rect);
+  }
+
+  if (!group2) {
+    spotlight2.classList.add("hidden");
+  } else {
+    const rect = unionRect(group2);
+    if (rect) {
+      spotlight2.classList.remove("hidden");
+      placeSpotlight(spotlight2, rect);
+    }
+  }
+}
+
+function renderTutorialStep() {
+  const step = TUTORIAL_STEPS[tutorialStep];
+  document.getElementById("tutorial-text").textContent = step.text;
+  positionTutorialSpotlight(step.targets);
+  const isLast = tutorialStep === TUTORIAL_STEPS.length - 1;
+  document.getElementById("tutorial-next").textContent = isLast ? "LET'S TRADE!" : "NEXT";
+}
+
+function openTutorial() {
+  tutorialStep = 0;
+  disableGameControls(true);
+  document.getElementById("tutorial-overlay").classList.remove("hidden");
+  renderTutorialStep();
+}
+
+function closeTutorial(markSeen) {
+  document.getElementById("tutorial-overlay").classList.add("hidden");
+  // tidy the second spotlight's own state on close too — harmless either
+  // way since it's a child of tutorial-overlay and already invisible once
+  // the overlay itself is hidden, but avoids leaving a stale "visible" class
+  // sitting on it between closes
+  document.getElementById("tutorial-spotlight-2").classList.add("hidden");
+  if (markSeen) {
+    try { localStorage.setItem(TUTORIAL_SEEN_KEY, "1"); } catch (e) { /* storage unavailable — fine to skip persisting */ }
+  }
+  if (!gameEnded) disableGameControls(false);
+}
+
+document.getElementById("tutorial-next").addEventListener("click", () => {
+  if (tutorialStep === TUTORIAL_STEPS.length - 1) {
+    closeTutorial(true);
+    return;
+  }
+  tutorialStep += 1;
+  renderTutorialStep();
+});
+
+document.getElementById("tutorial-skip").addEventListener("click", () => closeTutorial(true));
+
+document.getElementById("tutorial-replay-btn").addEventListener("click", () => openTutorial());
+
+window.addEventListener("resize", () => {
+  const overlay = document.getElementById("tutorial-overlay");
+  if (!overlay.classList.contains("hidden")) positionTutorialSpotlight(TUTORIAL_STEPS[tutorialStep].targets);
+});
+
 renderAll();
+
+try {
+  if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) openTutorial();
+} catch (e) { /* storage unavailable — just skip the auto-play, replay button still works */ }
